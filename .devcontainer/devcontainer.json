@@ -1,0 +1,30 @@
+{
+  "name": "TCC Nutricao",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+
+  // Roda sozinho quando o Codespace e criado: instala tudo do
+  // requirements.txt. Por isso nao e preciso criar ambiente virtual
+  // nem rodar pip manualmente.
+  "postCreateCommand": "pip install --user -r requirements.txt",
+
+  // Porta do Flask, liberada automaticamente para abrir no navegador.
+  "forwardPorts": [5000],
+  "portsAttributes": {
+    "5000": { "label": "Aplicacao web", "onAutoForward": "notify" }
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance"
+      ],
+      "settings": {
+        "python.testing.pytestEnabled": true,
+        "python.testing.pytestArgs": ["tests"],
+        "python.testing.unittestEnabled": false,
+        "files.eol": "\n"
+      }
+    }
+  }
+}

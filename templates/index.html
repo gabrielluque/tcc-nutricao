@@ -1,0 +1,297 @@
+{% extends "base.html" %}
+{% block titulo %}Calcular metas{% endblock %}
+
+{#
+  Pagina unica em duas partes.
+
+  A Parte A esta sempre visivel. A Parte B so e renderizada depois que o
+  servidor devolveu um plano - ou seja, depois do primeiro POST. Um unico
+  formulario envolve as duas: os campos da Parte A continuam presentes na
+  segunda submissao, e por isso nao e preciso duplicar nada em campos
+  ocultos nem guardar estado na sessao.
+
+  Os dois botoes enviam o mesmo formulario com valores diferentes de
+  "etapa", e e isso que diz ao servidor em qual das duas fases ele esta.
+#}
+
+{% macro valor(campo, alternativa='') -%}
+{{ form.get(campo, alternativa) if form else alternativa }}
+{%- endmacro %}
+
+{% block conteudo %}
+<div class="row justify-content-center">
+  <div class="col-12 col-lg-9">
+
+    {% if erros %}
+      <div class="alert alert-danger">
+        <ul class="mb-0 ps-3">
+          {% for erro in erros %}<li>{{ erro }}</li>{% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
+    <form method="POST" novalidate>
+
+      <!-- ============================================================
+           PARTE A
+           ============================================================ -->
+      <section class="cartao mb-4">
+        <h1 class="h5 mb-4">Seus dados</h1>
+
+        <div class="row g-3">
+          <div class="col-6 col-md-3">
+            <label class="form-label" for="sexo">Sexo</label>
+            <select class="form-select" id="sexo" name="sexo" required>
+              <option value="">—</option>
+              <option value="M" {% if valor('sexo', perfil.sexo or '') == 'M' %}selected{% endif %}>Masculino</option>
+              <option value="F" {% if valor('sexo', perfil.sexo or '') == 'F' %}selected{% endif %}>Feminino</option>
+            </select>
+          </div>
+
+          <div class="col-6 col-md-3">
+            <label class="form-label" for="data_nascimento">Nascimento</label>
+            <input class="form-control" type="date" id="data_nascimento"
+                   name="data_nascimento"
+                   value="{{ valor('data_nascimento', perfil.data_nascimento or '') }}" required>
+          </div>
+
+          <div class="col-6 col-md-3">
+            <label class="form-label" for="altura_cm">Altura (cm)</label>
+            <input class="form-control" type="number" id="altura_cm" name="altura_cm"
+                   min="120" max="230" step="1"
+                   value="{{ valor('altura_cm', perfil.altura_cm|int if perfil.altura_cm else '') }}"
+                   required>
+          </div>
+
+          <div class="col-6 col-md-3">
+            <label class="form-label" for="peso">Peso (kg)</label>
+            <input class="form-control" type="number" id="peso" name="peso"
+                   min="30" max="300" step="0.1"
+                   value="{{ valor('peso') }}" required>
+          </div>
+
+          <div class="col-12 col-md-6">
+            <label class="form-label" for="bf">
+              Percentual de gordura <span class="texto-suave">(opcional)</span>
+            </label>
+            <input class="form-control" type="number" id="bf" name="bf"
+                   min="3" max="70" step="0.1" value="{{ valor('bf') }}">
+            <div class="form-text">
+              Se você souber, o cálculo usa a equação de Katch-McArdle, mais
+              precisa. Se não souber, deixe em branco — o sistema usa
+              Mifflin-St Jeor, que não precisa desse dado.
+            </div>
+          </div>
+
+          <div class="col-12 col-md-6">
+            <label class="form-label" for="refeicoes_por_dia">Refeições por dia</label>
+            <select class="form-select" id="refeicoes_por_dia" name="refeicoes_por_dia" required>
+              {% for n in range(3, 7) %}
+                <option value="{{ n }}"
+                  {% if valor('refeicoes_por_dia', '4')|int == n %}selected{% endif %}>
+                  {{ n }} refeições
+                </option>
+              {% endfor %}
+            </select>
+            <div class="form-text">Quantas você consegue fazer na sua rotina real.</div>
+          </div>
+        </div>
+
+        <hr class="my-4">
+
+        <label class="form-label" for="nivel_atividade">Nível de atividade física</label>
+        <select class="form-select mb-4" id="nivel_atividade" name="nivel_atividade" required>
+          <option value="">—</option>
+          {% for chave, dados in atividades.items() %}
+            <option value="{{ chave }}"
+              {% if valor('nivel_atividade') == chave %}selected{% endif %}>
+              {{ dados.rotulo }}
+            </option>
+          {% endfor %}
+        </select>
+
+        <label class="form-label">Objetivo</label>
+        <div class="row g-2 mb-4">
+          {% for chave, dados in objetivos.items() %}
+            <div class="col-12 col-md-4">
+              <input class="btn-check" type="radio" name="objetivo" id="obj-{{ chave }}"
+                     value="{{ chave }}"
+                     {% if valor('objetivo') == chave %}checked{% endif %} required>
+              <label class="btn btn-outline-primary w-100 text-start p-3" for="obj-{{ chave }}">
+                <strong class="d-block">{{ dados.rotulo }}</strong>
+                <span class="small">{{ dados.descricao }}</span>
+              </label>
+            </div>
+          {% endfor %}
+        </div>
+
+        <div class="row g-3">
+          <div class="col-12 col-md-6">
+            <label class="form-label" for="restricoes">
+              Não como / sou intolerante a
+            </label>
+            <textarea class="form-control" id="restricoes" name="restricoes" rows="2"
+                      placeholder="lactose, glúten, camarão">{{ restricoes_texto or valor('restricoes') }}</textarea>
+            <div class="form-text">
+              Separe por vírgula. Esses alimentos são removidos da base
+              <strong>antes</strong> de o cardápio ser montado.
+            </div>
+          </div>
+
+          <div class="col-12 col-md-6">
+            <label class="form-label" for="preferencias">
+              Alimentos que eu gosto <span class="texto-suave">(opcional)</span>
+            </label>
+            <textarea class="form-control" id="preferencias" name="preferencias" rows="2"
+                      placeholder="arroz, feijão, ovo, banana">{{ preferencias or valor('preferencias') }}</textarea>
+            <div class="form-text">O cardápio dá preferência a eles quando possível.</div>
+          </div>
+        </div>
+
+        {% if not plano %}
+          <button class="btn btn-primary btn-lg w-100 mt-4"
+                  type="submit" name="etapa" value="calcular">
+            Calcular
+          </button>
+        {% endif %}
+      </section>
+
+      <!-- ============================================================
+           PARTE B  —  aparece após o cálculo
+           ============================================================ -->
+      {% if plano %}
+      <section class="cartao mb-4">
+        <h2 class="h5 mb-4">Seus números</h2>
+
+        <div class="row g-3 mb-4">
+          <div class="col-6 col-md-3">
+            <div class="numero-caixa">
+              <span class="numero-rotulo">Gasto em repouso</span>
+              <span class="numero-valor">{{ plano.tmb|round|int }}</span>
+              <span class="numero-unidade">kcal</span>
+            </div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="numero-caixa">
+              {# plano['get'] e nao plano.get: "get" e tambem o nome de um
+                 metodo de dicionario, e o Jinja devolveria a funcao. #}
+              <span class="numero-rotulo">Gasto total no dia</span>
+              <span class="numero-valor">{{ plano['get']|round|int }}</span>
+              <span class="numero-unidade">kcal</span>
+            </div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="numero-caixa destaque">
+              <span class="numero-rotulo">Sua meta</span>
+              <span class="numero-valor">{{ plano.meta_calorica|round|int }}</span>
+              <span class="numero-unidade">kcal</span>
+            </div>
+          </div>
+          <div class="col-6 col-md-3">
+            {% if plano.massa_magra %}
+            <div class="numero-caixa">
+              <span class="numero-rotulo">Massa magra</span>
+              <span class="numero-valor">{{ plano.massa_magra|round(1) }}</span>
+              <span class="numero-unidade">kg</span>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+
+        <details class="mb-4">
+          <summary class="texto-suave small">Como esses números foram calculados</summary>
+          <div class="small texto-suave mt-2">
+            <p class="mb-1">
+              Equação usada: <strong>{{ plano.equacao_utilizada }}</strong>
+              {% if plano.equacao_utilizada == 'Katch-McArdle' %}
+                — escolhida porque você informou o percentual de gordura.
+              {% else %}
+                — padrão do sistema quando o percentual de gordura não é informado.
+              {% endif %}
+            </p>
+            <p class="mb-1">
+              Gasto total = gasto em repouso × {{ plano.fator_atividade }}
+              (fator do seu nível de atividade).
+            </p>
+            <p class="mb-0">
+              Meta = gasto total {{ '%+.1f'|format(plano.ajuste_calorico) }}%.
+            </p>
+          </div>
+        </details>
+
+        <h2 class="h6 mb-1">Ajuste fino</h2>
+        <p class="texto-suave small mb-4">
+          Já vem preenchido com a recomendação para o seu objetivo.
+          Mexa só se quiser.
+        </p>
+
+        {% macro controle(campo, rotulo, unidade, padroes, atual, passo) %}
+          <div class="mb-4">
+            <div class="d-flex justify-content-between align-items-baseline">
+              <label class="form-label mb-1" for="{{ campo }}">{{ rotulo }}</label>
+              <span class="valor-controle">
+                <output id="saida-{{ campo }}">{{ atual }}</output> {{ unidade }}
+              </span>
+            </div>
+            <input type="range" class="form-range" id="{{ campo }}" name="{{ campo }}"
+                   min="{{ padroes.faixa[0] }}" max="{{ padroes.faixa[1] }}"
+                   step="{{ passo }}" value="{{ atual }}"
+                   oninput="document.getElementById('saida-{{ campo }}').textContent = this.value">
+            <div class="d-flex justify-content-between texto-suave pequeno">
+              <span>{{ padroes.faixa[0] }}</span>
+              <span>recomendado: {{ padroes.padrao }}</span>
+              <span>{{ padroes.faixa[1] }}</span>
+            </div>
+          </div>
+        {% endmacro %}
+
+        {{ controle('ajuste_calorico', 'Ajuste calórico', '%',
+                    plano.padroes.ajuste_calorico, plano.ajuste_calorico, 0.5) }}
+        {{ controle('fator_proteina', 'Proteína', 'g por kg',
+                    plano.padroes.proteina, plano.fator_proteina, 0.1) }}
+        {{ controle('fator_gordura', 'Gordura', 'g por kg',
+                    plano.padroes.gordura, plano.fator_gordura, 0.1) }}
+        {{ controle('fator_agua', 'Água', 'ml por kg',
+                    plano.padroes.agua, plano.fator_agua, 0.5) }}
+        {{ controle('fator_fibras', 'Fibras', 'g por kg',
+                    plano.padroes.fibras, plano.fator_fibras, 0.05) }}
+
+        <hr class="my-4">
+
+        <h2 class="h6 mb-3">O que isso dá por dia</h2>
+        <div class="row g-2 mb-4">
+          {% for rotulo, chave, unidade in [
+              ('Proteína', 'proteina_g', 'g'), ('Gordura', 'gordura_g', 'g'),
+              ('Carboidrato', 'carboidrato_g', 'g'),
+              ('Água', 'agua_ml', 'ml'), ('Fibras', 'fibras_g', 'g')] %}
+            <div class="col-6 col-md">
+              <div class="numero-caixa pequena">
+                <span class="numero-rotulo">{{ rotulo }}</span>
+                <span class="numero-valor">{{ plano[chave]|round|int }}</span>
+                <span class="numero-unidade">{{ unidade }}</span>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+
+        {% if plano.aviso %}
+          <div class="alert alert-warning py-2 small">{{ plano.aviso }}</div>
+        {% endif %}
+
+        <div class="d-flex gap-2 flex-wrap">
+          <button class="btn btn-outline-secondary" type="submit"
+                  name="etapa" value="calcular">
+            Recalcular com os ajustes
+          </button>
+          <button class="btn btn-primary flex-grow-1" type="submit"
+                  name="etapa" value="gerar">
+            Gerar meu cardápio
+          </button>
+        </div>
+      </section>
+      {% endif %}
+
+    </form>
+  </div>
+</div>
+{% endblock %}

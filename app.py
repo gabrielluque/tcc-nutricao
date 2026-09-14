@@ -50,6 +50,21 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY", "desenvolvimento-apenas")
 
 LIMITE_DIETAS_POR_DIA = int(os.environ.get("LIMITE_DIETAS_POR_DIA", 10))
 
+# Garante que as tabelas existam antes de a primeira requisicao chegar.
+#
+# Sem isto, a aplicacao sobe normalmente e so quebra quando alguem tenta
+# fazer login: o sqlite3.connect() CRIA o arquivo do banco caso ele nao
+# exista, mas cria vazio, sem tabela alguma. O sintoma e enganoso - o
+# arquivo saude.db aparece na pasta, e mesmo assim o erro diz
+# "no such table: usuarios".
+#
+# A chamada usa CREATE TABLE IF NOT EXISTS, entao e segura a cada reinicio
+# e nunca apaga dado existente. O efeito pratico e que a aplicacao passa a
+# se instalar sozinha: clonar e rodar basta, sem passo manual esquecivel -
+# o que importa especialmente no dia da publicacao, com voluntarios
+# tentando acessar.
+banco.criar_esquema()
+
 
 # ==========================================================================
 # 1. AUTENTICACAO

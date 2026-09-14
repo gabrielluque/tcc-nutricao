@@ -1,0 +1,35 @@
+# ===========================================================================
+# Arquivos que NUNCA devem ir para o GitHub
+# ===========================================================================
+
+# Credenciais. A chave da API mora aqui.
+# Esta é a linha mais importante deste arquivo.
+.env
+
+# Banco de dados. Contém dados pessoais de usuários reais e é recriado
+# a qualquer momento por criar_banco.py + importar_taco.py.
+*.db
+*.db-journal
+*.sqlite3
+
+# ===========================================================================
+# Lixo gerado pelo Python
+# ===========================================================================
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Ambiente virtual
+.venv/
+venv/
+env/
+
+# ===========================================================================
+# Configuração de editor e sistema operacional
+# ===========================================================================
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini

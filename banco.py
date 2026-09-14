@@ -191,16 +191,24 @@ EVENTOS_VALIDOS = {
 # ==========================================================================
 
 @contextmanager
-def conectar(caminho=CAMINHO_BANCO):
+def conectar(caminho=None):
     """
     Abre conexao com commit em caso de sucesso, rollback em caso de erro e
     fechamento em qualquer situacao.
+
+    O caminho e resolvido AQUI, e nao como valor padrao dos parametros. Em
+    Python, o valor padrao de um argumento e avaliado uma unica vez, quando
+    a funcao e definida: escrever "caminho=CAMINHO_BANCO" na assinatura
+    congelaria o nome do arquivo no momento do import, e trocar
+    banco.CAMINHO_BANCO depois nao teria efeito algum. Isso impediria os
+    testes de apontar o modulo para um banco temporario - e impediria,
+    igualmente, configurar o caminho por variavel de ambiente em producao.
 
     PRAGMA foreign_keys = ON e obrigatorio: o SQLite ignora chaves
     estrangeiras por padrao, e sem ele o ON DELETE CASCADE que sustenta a
     exclusao de conta simplesmente nao funcionaria.
     """
-    conexao = sqlite3.connect(caminho)
+    conexao = sqlite3.connect(caminho or CAMINHO_BANCO)
     conexao.row_factory = sqlite3.Row
     conexao.execute("PRAGMA foreign_keys = ON")
     try:
@@ -213,7 +221,7 @@ def conectar(caminho=CAMINHO_BANCO):
         conexao.close()
 
 
-def criar_esquema(caminho=CAMINHO_BANCO):
+def criar_esquema(caminho=None):
     """Cria todas as tabelas. Seguro executar mais de uma vez."""
     with conectar(caminho) as conexao:
         conexao.executescript(ESQUEMA)
@@ -259,7 +267,7 @@ class EmailJaCadastrado(Exception):
     """Tentativa de cadastro com e-mail que ja existe."""
 
 
-def criar_usuario(nome, email, senha, consentiu_lgpd=False, caminho=CAMINHO_BANCO):
+def criar_usuario(nome, email, senha, consentiu_lgpd=False, caminho=None):
     """
     Cadastra um usuario e devolve o seu id.
 
@@ -282,7 +290,7 @@ def criar_usuario(nome, email, senha, consentiu_lgpd=False, caminho=CAMINHO_BANC
         raise EmailJaCadastrado(f"O e-mail {email} já possui cadastro.") from erro
 
 
-def autenticar(email, senha, caminho=CAMINHO_BANCO):
+def autenticar(email, senha, caminho=None):
     """
     Verifica credenciais e devolve os dados do usuario, ou None.
 
@@ -318,7 +326,7 @@ def _montar_perfil(linha):
     }
 
 
-def buscar_perfil(usuario_id, caminho=CAMINHO_BANCO):
+def buscar_perfil(usuario_id, caminho=None):
     with conectar(caminho) as conexao:
         linha = conexao.execute(
             "SELECT * FROM usuarios WHERE id = ?", (usuario_id,)).fetchone()
@@ -326,7 +334,7 @@ def buscar_perfil(usuario_id, caminho=CAMINHO_BANCO):
 
 
 def atualizar_perfil(usuario_id, sexo=None, altura_cm=None,
-                     data_nascimento=None, caminho=CAMINHO_BANCO):
+                     data_nascimento=None, caminho=None):
     """
     Grava os dados que nao mudam entre visitas.
 
@@ -345,7 +353,7 @@ def atualizar_perfil(usuario_id, sexo=None, altura_cm=None,
         )
 
 
-def excluir_conta(usuario_id, caminho=CAMINHO_BANCO):
+def excluir_conta(usuario_id, caminho=None):
     """
     Apaga o usuario e, em cascata, todos os seus registros, pedidos de
     ajuste e eventos.
@@ -403,7 +411,7 @@ def expandir_restricoes(restricoes):
     return [_normalizar(t) for t in termos]
 
 
-def buscar_catalogo(restricoes=None, grupos=None, caminho=CAMINHO_BANCO):
+def buscar_catalogo(restricoes=None, grupos=None, caminho=None):
     """
     Devolve os alimentos disponiveis para montar o cardapio.
 
@@ -432,7 +440,7 @@ def buscar_catalogo(restricoes=None, grupos=None, caminho=CAMINHO_BANCO):
         return [dict(linha) for linha in conexao.execute(sql, parametros)]
 
 
-def listar_excluidos(restricoes, caminho=CAMINHO_BANCO):
+def listar_excluidos(restricoes, caminho=None):
     """
     Devolve os alimentos retirados do catalogo.
 
@@ -453,7 +461,7 @@ def listar_excluidos(restricoes, caminho=CAMINHO_BANCO):
 
 
 def inserir_alimento(codigo_taco, nome, grupo, kcal, proteina_g, gordura_g,
-                     carboidrato_g, fibra_g=0.0, caminho=CAMINHO_BANCO):
+                     carboidrato_g, fibra_g=0.0, caminho=None):
     """Insere ou atualiza um alimento. Usado pelo importador da TACO."""
     with conectar(caminho) as conexao:
         cursor = conexao.execute(
@@ -467,7 +475,7 @@ def inserir_alimento(codigo_taco, nome, grupo, kcal, proteina_g, gordura_g,
         return cursor.lastrowid
 
 
-def contar_alimentos(caminho=CAMINHO_BANCO):
+def contar_alimentos(caminho=None):
     with conectar(caminho) as conexao:
         return conexao.execute("SELECT COUNT(*) AS n FROM alimentos").fetchone()["n"]
 
@@ -477,7 +485,7 @@ def contar_alimentos(caminho=CAMINHO_BANCO):
 # ==========================================================================
 
 def salvar_registro(usuario_id, peso, bf, nivel_atividade, objetivo,
-                    refeicoes_por_dia, plano, caminho=CAMINHO_BANCO):
+                    refeicoes_por_dia, plano, caminho=None):
     """
     Grava um calculo completo e devolve o id do registro.
 
@@ -515,7 +523,7 @@ def salvar_registro(usuario_id, peso, bf, nivel_atividade, objetivo,
         return cursor.lastrowid
 
 
-def listar_registros(usuario_id, limite=50, caminho=CAMINHO_BANCO):
+def listar_registros(usuario_id, limite=50, caminho=None):
     """Historico do usuario, do mais recente para o mais antigo."""
     with conectar(caminho) as conexao:
         return [dict(linha) for linha in conexao.execute(
@@ -524,7 +532,7 @@ def listar_registros(usuario_id, limite=50, caminho=CAMINHO_BANCO):
             (usuario_id, limite))]
 
 
-def buscar_registro(registro_id, usuario_id=None, caminho=CAMINHO_BANCO):
+def buscar_registro(registro_id, usuario_id=None, caminho=None):
     """
     Busca um registro especifico.
 
@@ -543,7 +551,7 @@ def buscar_registro(registro_id, usuario_id=None, caminho=CAMINHO_BANCO):
     return dict(linha) if linha else None
 
 
-def evolucao_de_peso(usuario_id, caminho=CAMINHO_BANCO):
+def evolucao_de_peso(usuario_id, caminho=None):
     """Serie temporal de peso, da mais antiga para a mais recente."""
     with conectar(caminho) as conexao:
         return [dict(linha) for linha in conexao.execute(
@@ -555,7 +563,7 @@ def evolucao_de_peso(usuario_id, caminho=CAMINHO_BANCO):
 # 6. PEDIDOS DE AJUSTE DO CARDAPIO
 # ==========================================================================
 
-def salvar_pedido_ajuste(registro_id, texto, caminho=CAMINHO_BANCO):
+def salvar_pedido_ajuste(registro_id, texto, caminho=None):
     """
     Guarda um pedido de alteracao em linguagem natural.
 
@@ -571,7 +579,7 @@ def salvar_pedido_ajuste(registro_id, texto, caminho=CAMINHO_BANCO):
         return cursor.lastrowid
 
 
-def listar_pedidos(registro_id, caminho=CAMINHO_BANCO):
+def listar_pedidos(registro_id, caminho=None):
     with conectar(caminho) as conexao:
         return [dict(linha) for linha in conexao.execute(
             "SELECT * FROM pedidos_ajuste WHERE registro_id = ? ORDER BY ordem",
@@ -582,7 +590,7 @@ def listar_pedidos(registro_id, caminho=CAMINHO_BANCO):
 # 7. EVENTOS E LIMITE DE USO
 # ==========================================================================
 
-def registrar_evento(usuario_id, tipo, detalhe=None, caminho=CAMINHO_BANCO):
+def registrar_evento(usuario_id, tipo, detalhe=None, caminho=None):
     """Registra uma acao. 'detalhe' aceita apenas rotulos curtos."""
     if tipo not in EVENTOS_VALIDOS:
         raise ValueError(
@@ -593,7 +601,7 @@ def registrar_evento(usuario_id, tipo, detalhe=None, caminho=CAMINHO_BANCO):
             (usuario_id, tipo, detalhe, _agora()))
 
 
-def contar_eventos_hoje(usuario_id, tipo, caminho=CAMINHO_BANCO):
+def contar_eventos_hoje(usuario_id, tipo, caminho=None):
     """
     Quantas vezes o usuario disparou este evento hoje (UTC).
 
@@ -612,7 +620,7 @@ def contar_eventos_hoje(usuario_id, tipo, caminho=CAMINHO_BANCO):
 # 8. ANALISE PARA O CAPITULO 4
 # ==========================================================================
 
-def resumo_de_uso(caminho=CAMINHO_BANCO):
+def resumo_de_uso(caminho=None):
     """Totais agregados de uso do sistema."""
     with conectar(caminho) as conexao:
         por_tipo = {l["tipo"]: l["n"] for l in conexao.execute(
@@ -645,7 +653,7 @@ PARAMETROS_AJUSTAVEIS = {
 }
 
 
-def analise_de_personalizacao(caminho=CAMINHO_BANCO):
+def analise_de_personalizacao(caminho=None):
     """
     Mede quanto os usuarios alteram as recomendacoes do sistema.
 
@@ -695,7 +703,7 @@ def analise_de_personalizacao(caminho=CAMINHO_BANCO):
     }
 
 
-def pedidos_mais_comuns(limite=20, caminho=CAMINHO_BANCO):
+def pedidos_mais_comuns(limite=20, caminho=None):
     """
     Pedidos de ajuste de cardapio, para analise qualitativa no Capitulo 4.
 

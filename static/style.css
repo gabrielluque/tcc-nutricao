@@ -1,0 +1,179 @@
+/* =========================================================================
+   style.css - Estilos proprios da aplicacao.
+
+   O Bootstrap cuida da grade e dos componentes basicos. Este arquivo define
+   apenas o que e especifico do sistema: a paleta, os cartoes e as caixas de
+   numero. Manter o conjunto pequeno e deliberado - cada regra aqui e uma
+   decisao que precisa ser justificada, nao um acumulo.
+   ========================================================================= */
+
+:root {
+  --tinta:        #1f2933;
+  --tinta-suave:  #6b7684;
+  --papel:        #f6f7f9;
+  --superficie:   #ffffff;
+  --borda:        #e3e6ea;
+  --acento:       #2f7d5d;   /* verde sobrio, nao "app de dieta" */
+  --acento-claro: #eaf3ee;
+  --perigo:       #b4433a;
+}
+
+body {
+  background: var(--papel);
+  color: var(--tinta);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+/* ---------- Estrutura ---------------------------------------------------- */
+
+.barra-topo {
+  background: var(--superficie);
+  border-bottom: 1px solid var(--borda);
+}
+
+.barra-topo .navbar-brand {
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--tinta);
+}
+
+.barra-topo a {
+  color: var(--tinta-suave);
+  text-decoration: none;
+  font-size: .9rem;
+}
+
+.barra-topo a:hover { color: var(--acento); }
+.barra-topo .texto-saida:hover { color: var(--perigo); }
+
+.cartao {
+  background: var(--superficie);
+  border: 1px solid var(--borda);
+  border-radius: 10px;
+  padding: 1.75rem;
+}
+
+.cartao.p-0 { padding: 0; }
+
+.borda-perigo { border-color: #e8c9c6; }
+
+.texto-suave { color: var(--tinta-suave); }
+.pequeno     { font-size: .75rem; }
+
+/* ---------- Caixas de numero --------------------------------------------
+   Usadas para TMB, GET, meta e macronutrientes. O rotulo vem antes do
+   numero porque o usuario leigo precisa saber o que esta lendo antes de
+   ver o valor.
+   ------------------------------------------------------------------------ */
+
+.numero-caixa {
+  background: var(--papel);
+  border: 1px solid var(--borda);
+  border-radius: 8px;
+  padding: .9rem 1rem;
+  height: 100%;
+}
+
+.numero-caixa.destaque {
+  background: var(--acento-claro);
+  border-color: #cfe3d7;
+}
+
+.numero-rotulo {
+  display: block;
+  font-size: .75rem;
+  color: var(--tinta-suave);
+  margin-bottom: .15rem;
+}
+
+.numero-valor {
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.numero-caixa.pequena .numero-valor { font-size: 1.2rem; }
+
+.numero-unidade {
+  font-size: .8rem;
+  color: var(--tinta-suave);
+  margin-left: .15rem;
+}
+
+/* ---------- Controles deslizantes ---------------------------------------- */
+
+.valor-controle {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  font-size: .9rem;
+}
+
+.form-range::-webkit-slider-thumb { background: var(--acento); }
+.form-range::-moz-range-thumb     { background: var(--acento); }
+
+/* ---------- Botoes e formularios ----------------------------------------- */
+
+.btn-primary {
+  background: var(--acento);
+  border-color: var(--acento);
+}
+
+.btn-primary:hover,
+.btn-primary:focus {
+  background: #27684d;
+  border-color: #27684d;
+}
+
+.btn-outline-primary {
+  color: var(--tinta);
+  border-color: var(--borda);
+}
+
+.btn-check:checked + .btn-outline-primary {
+  background: var(--acento-claro);
+  border-color: var(--acento);
+  color: var(--tinta);
+}
+
+.form-control:focus,
+.form-select:focus {
+  border-color: var(--acento);
+  box-shadow: 0 0 0 .2rem rgba(47, 125, 93, .15);
+}
+
+.form-label { font-size: .875rem; font-weight: 500; }
+.form-text  { font-size: .8rem; }
+
+/* ---------- Aviso de uso de dados ---------------------------------------- */
+
+.aviso-dados {
+  background: var(--papel);
+  border: 1px solid var(--borda);
+  border-radius: 8px;
+  padding: 1rem 1.15rem;
+}
+
+/* ---------- Tabela do historico ------------------------------------------ */
+
+.table thead th {
+  font-size: .75rem;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  color: var(--tinta-suave);
+  font-weight: 600;
+  border-bottom-color: var(--borda);
+}
+
+.table td { font-variant-numeric: tabular-nums; }
+
+/* ---------- Telas estreitas ----------------------------------------------
+   O sistema sera testado por voluntarios, e boa parte vai abrir pelo
+   celular. Reduzir o respiro do cartao evita que o conteudo fique
+   espremido contra as bordas.
+   ------------------------------------------------------------------------ */
+
+@media (max-width: 575.98px) {
+  .cartao { padding: 1.15rem; }
+  .numero-valor { font-size: 1.3rem; }
+}

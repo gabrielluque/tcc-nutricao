@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block titulo %}Criar conta{% endblock %}
+
+{% block conteudo %}
+<div class="row justify-content-center">
+  <div class="col-12 col-md-7 col-lg-6">
+
+    <div class="cartao">
+      <h1 class="h4 mb-1">Criar conta</h1>
+      <p class="texto-suave small mb-4">
+        Leva menos de um minuto.
+      </p>
+
+      {% if erros %}
+        <div class="alert alert-danger py-2">
+          <ul class="mb-0 ps-3">
+            {% for erro in erros %}<li>{{ erro }}</li>{% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+
+      <form method="POST" novalidate>
+        <div class="mb-3">
+          <label class="form-label" for="nome">Como quer ser chamado</label>
+          <input class="form-control" type="text" id="nome" name="nome"
+                 value="{{ nome or '' }}" required autofocus>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label" for="email">E-mail</label>
+          <input class="form-control" type="email" id="email" name="email"
+                 value="{{ email or '' }}" required>
+        </div>
+
+        <div class="mb-4">
+          <label class="form-label" for="senha">Senha</label>
+          <input class="form-control" type="password" id="senha" name="senha"
+                 minlength="6" required>
+          <div class="form-text">Mínimo de 6 caracteres.</div>
+        </div>
+
+        {#
+          Consentimento informado. A LGPD exige finalidade declarada e
+          aceite explicito para dados de saude; o banco grava a data e a
+          hora do aceite junto do cadastro.
+        #}
+        <div class="aviso-dados mb-4">
+          <h2 class="h6 mb-2">Como seus dados são usados</h2>
+          <p class="small mb-2">
+            Este sistema é um trabalho acadêmico de Ciência da Computação.
+            Para calcular suas metas, ele guarda peso, altura, data de
+            nascimento, sexo, percentual de gordura (se você informar) e suas
+            preferências alimentares.
+          </p>
+          <p class="small mb-2">
+            Sua senha é armazenada de forma criptografada — nem o autor do
+            sistema consegue lê-la.
+          </p>
+          <p class="small mb-2">
+            Os dados são usados apenas para gerar seu plano e para uma
+            análise estatística agregada e anônima na pesquisa. Não são
+            vendidos nem compartilhados.
+          </p>
+          <p class="small mb-0">
+            Você pode <strong>apagar sua conta e todos os seus dados</strong> a
+            qualquer momento, na página Conta.
+          </p>
+        </div>
+
+        <div class="form-check mb-4">
+          <input class="form-check-input" type="checkbox" id="consentimento"
+                 name="consentimento" value="sim" required>
+          <label class="form-check-label small" for="consentimento">
+            Li e concordo com o uso dos meus dados conforme descrito acima.
+          </label>
+        </div>
+
+        <button class="btn btn-primary w-100" type="submit">Criar conta</button>
+      </form>
+
+      <p class="text-center mt-4 mb-0 small">
+        Já tem conta? <a href="{{ url_for('login') }}">Entrar</a>
+      </p>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

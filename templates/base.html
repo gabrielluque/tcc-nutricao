@@ -1,0 +1,65 @@
+{#
+  base.html - Layout herdado por todas as telas.
+
+  Cabecalho, menu, rodape e mensagens ficam aqui uma unica vez. As demais
+  paginas preenchem apenas o bloco "conteudo". No prototipo anterior cada
+  tela repetia o proprio <head>, e corrigir o titulo exigia editar quatro
+  arquivos.
+#}
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titulo %}Plano Nutricional{% endblock %}</title>
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<nav class="navbar navbar-expand-lg barra-topo">
+  <div class="container">
+    <a class="navbar-brand" href="{{ url_for('calcular') if session.usuario_id else url_for('login') }}">
+      Plano Nutricional
+    </a>
+    {% if session.usuario_id %}
+      <div class="ms-auto d-flex align-items-center gap-3">
+        <span class="d-none d-sm-inline texto-suave">{{ session.usuario_nome }}</span>
+        <a href="{{ url_for('calcular') }}">Novo cálculo</a>
+        <a href="{{ url_for('historico') }}">Histórico</a>
+        <a href="{{ url_for('conta') }}">Conta</a>
+        <a href="{{ url_for('logout') }}" class="texto-saida">Sair</a>
+      </div>
+    {% endif %}
+  </div>
+</nav>
+
+<main class="container py-4">
+
+  {% with mensagens = get_flashed_messages(with_categories=true) %}
+    {% for categoria, texto in mensagens %}
+      <div class="alert {{ 'alert-success' if categoria == 'sucesso' else 'alert-warning' }}">
+        {{ texto }}
+      </div>
+    {% endfor %}
+  {% endwith %}
+
+  {% block conteudo %}{% endblock %}
+</main>
+
+<footer class="container py-4 texto-suave small">
+  <hr>
+  <p class="mb-1">
+    Trabalho de Curso II — Ciência da Computação, UNIP Jacareí.
+    Cálculos baseados nas equações de Mifflin-St Jeor e Katch-McArdle;
+    composição dos alimentos conforme a Tabela TACO.
+  </p>
+  <p class="mb-0">
+    Esta ferramenta é um apoio computacional e <strong>não substitui</strong>
+    acompanhamento médico ou nutricional.
+  </p>
+</footer>
+
+</body>
+</html>

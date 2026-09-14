@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block titulo %}Histórico{% endblock %}
+
+{% block conteudo %}
+<div class="row justify-content-center">
+  <div class="col-12 col-lg-10">
+
+    <h1 class="h5 mb-4">Histórico de cálculos</h1>
+
+    {% if not registros %}
+      <div class="cartao text-center py-5">
+        <p class="texto-suave mb-3">Você ainda não fez nenhum cálculo.</p>
+        <a class="btn btn-primary" href="{{ url_for('calcular') }}">Calcular agora</a>
+      </div>
+    {% else %}
+      <div class="cartao p-0">
+        {#
+          As celulas sao lidas por NOME de coluna (registro.peso), nunca por
+          posicao. No prototipo anterior esta tela usava indices numericos e,
+          quando uma coluna foi inserida no meio da tabela, todos os valores
+          passaram a aparecer deslocados - a data no lugar do peso, o peso no
+          lugar do percentual de gordura - sem gerar erro algum.
+        #}
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Peso</th>
+                <th>Objetivo</th>
+                <th class="text-end">Meta</th>
+                <th class="text-end">Prot</th>
+                <th class="text-end">Gord</th>
+                <th class="text-end">Carb</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for registro in registros %}
+                <tr>
+                  <td class="texto-suave">{{ registro.criado_em[:10] }}</td>
+                  <td>{{ registro.peso|round(1) }} kg</td>
+                  <td>
+                    <span class="badge text-bg-light">
+                      {{ {'perder': 'Perder gordura',
+                          'manter': 'Manter',
+                          'ganhar': 'Ganhar massa'}.get(registro.objetivo, registro.objetivo) }}
+                    </span>
+                  </td>
+                  <td class="text-end"><strong>{{ registro.meta_calorica|round|int }}</strong></td>
+                  <td class="text-end">{{ registro.proteina_g|round|int }} g</td>
+                  <td class="text-end">{{ registro.gordura_g|round|int }} g</td>
+                  <td class="text-end">{{ registro.carboidrato_g|round|int }} g</td>
+                  <td class="text-end">
+                    <a class="small" href="{{ url_for('resultado', registro_id=registro.id) }}">abrir</a>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <p class="texto-suave small mt-3">
+        {{ registros|length }} cálculo{{ '' if registros|length == 1 else 's' }} registrado{{ '' if registros|length == 1 else 's' }}.
+      </p>
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}

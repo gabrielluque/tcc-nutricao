@@ -52,6 +52,7 @@ DECISOES DE PROJETO
    injecao de SQL.
 """
 
+import os
 import sqlite3
 import unicodedata
 from contextlib import contextmanager
@@ -59,7 +60,21 @@ from datetime import date, datetime, timezone
 
 from werkzeug.security import check_password_hash, generate_password_hash
 
-CAMINHO_BANCO = "saude.db"
+# Caminho do banco.
+#
+# E ABSOLUTO de proposito, ancorado na pasta deste arquivo. Com o caminho
+# relativo "saude.db", o banco usado passa a depender de onde o comando foi
+# digitado: rodar a partir da pasta de cima criava um segundo banco, vazio,
+# e o sintoma era "meu usuario sumiu". No servidor isso seria pior - o
+# processo do site nao inicia na pasta do projeto, e o site subiria com um
+# banco novo em branco enquanto o verdadeiro continuava intacto ao lado.
+#
+# A variavel de ambiente CAMINHO_BANCO tem prioridade, para que o servidor
+# possa guardar o arquivo fora da pasta do codigo.
+CAMINHO_BANCO = os.environ.get(
+    "CAMINHO_BANCO",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "saude.db"),
+)
 
 
 # ==========================================================================

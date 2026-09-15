@@ -131,6 +131,42 @@ def test_direcao_do_ajuste_corresponde_ao_objetivo():
     assert calc.padroes_do_objetivo("ganhar", "moderado")["ajuste_calorico"]["padrao"] > 0
 
 
+@pytest.mark.parametrize("objetivo", ["perder", "manter", "ganhar"])
+def test_controle_calorico_e_exibido_sempre_crescente(objetivo):
+    """Um deslizante cresce da esquerda para a direita. Se a faixa visivel do
+    deficit fosse (-25, -10), arrastar para a direita significaria comer MAIS -
+    o oposto do que se espera de um controle de intensidade. A faixa exibida
+    e sempre positiva e ascendente."""
+    cal = calc.padroes_do_objetivo(objetivo, "moderado")["ajuste_calorico"]
+    minimo, maximo = cal["faixa_visivel"]
+    assert 0 <= minimo <= maximo
+    assert minimo <= cal["padrao_visivel"] <= maximo
+
+
+def test_sinal_do_ajuste_volta_no_servidor():
+    """A interface manda intensidade positiva; o sinal e do objetivo."""
+    assert calc.ajuste_assinado("perder", 20) == -20.0
+    assert calc.ajuste_assinado("ganhar", 10) == +10.0
+    assert calc.ajuste_assinado("manter", 99) == 0.0
+    # Mesmo que a interface envie negativo por engano, o sinal e corrigido.
+    assert calc.ajuste_assinado("perder", -20) == -20.0
+
+
+def test_deficit_maximo_respeita_o_limite_seguro():
+    """A literatura recomenda perda de ate ~0,5% do peso por semana para
+    preservar massa magra. O teto anterior de 35% era agressivo demais."""
+    minimo, maximo = calc.OBJETIVOS["perder"]["ajuste_calorico"]["faixa"]
+    assert min(minimo, maximo) >= -25.0
+
+
+@pytest.mark.parametrize("objetivo", ["perder", "manter", "ganhar"])
+def test_faixa_de_proteina_segue_a_literatura(objetivo):
+    """1,6 a 2,4 g/kg: plato identificado por Morton et al. (2018), confirmado
+    por Nunes et al. (2022) e pelo consenso de entidades internacionais."""
+    faixa = calc.OBJETIVOS[objetivo]["proteina"]["faixa"]
+    assert faixa == (1.6, 2.4)
+
+
 # ==========================================================================
 # MACRONUTRIENTES
 # ==========================================================================
@@ -138,8 +174,9 @@ def test_direcao_do_ajuste_corresponde_ao_objetivo():
 def test_macros_do_perfil_de_referencia():
     macros = calc.calcular_macros(peso=80, meta_calorica=1897.4945, objetivo="perder")
     assert macros["proteina_g"] == pytest.approx(176.0)   # 80 x 2.2
-    assert macros["gordura_g"] == pytest.approx(72.0)     # 80 x 0.9
-    assert macros["carboidrato_g"] == pytest.approx(136.3736, abs=1e-3)
+    assert macros["gordura_g"] == pytest.approx(64.0)     # 80 x 0.8
+    # Sobra: 1897,4945 - (176x4) - (64x9) = 617,4945 kcal -> /4
+    assert macros["carboidrato_g"] == pytest.approx(154.3736, abs=1e-3)
     assert macros["aviso"] is None
 
 
@@ -180,13 +217,27 @@ def test_agua_varia_com_o_nivel_de_atividade():
     assert calc.calcular_agua(80, "sedentario") < calc.calcular_agua(80, "muito_intenso")
 
 
-def test_agua_e_fibras_aceitam_fator_personalizado():
+def test_agua_aceita_fator_personalizado():
     assert calc.calcular_agua(80, "moderado", fator=45.0) == pytest.approx(3600.0)
-    assert calc.calcular_fibras(80, fator=0.5) == pytest.approx(40.0)
 
 
-def test_fibras():
-    assert calc.calcular_fibras(80) == pytest.approx(32.0)   # 80 x 0.4
+def test_fibras_seguem_a_energia_e_nao_o_peso():
+    """A recomendacao oficial e de 14 g por 1000 kcal (Institute of Medicine),
+    e nao gramas por quilo.
+
+    Este teste fixa a mudanca de base: a meta de fibra acompanha a meta
+    calorica. Uma dieta de 2000 kcal pede 28 g independentemente de a pessoa
+    pesar 60 ou 90 kg.
+    """
+    assert calc.calcular_fibras(2000) == pytest.approx(28.0)
+    assert calc.calcular_fibras(1000) == pytest.approx(14.0)
+    assert calc.calcular_fibras(2500, fator=20) == pytest.approx(50.0)
+
+
+def test_fibras_de_2000_kcal_batem_com_a_faixa_oficial():
+    """25 g/dia para mulheres e 38 g/dia para homens sao os valores de
+    referencia; uma dieta tipica precisa cair perto dessa faixa."""
+    assert 25 <= calc.calcular_fibras(2200) <= 38
 
 
 # ==========================================================================
@@ -247,5 +298,5 @@ def test_plano_devolve_os_padroes_para_a_interface():
     consiga redesenhar os controles na posicao correta sem recalcular."""
     plano = calc.montar_plano(peso=80, altura_cm=175, idade=30, sexo="M",
                               nivel_atividade="intenso", objetivo="ganhar")
-    assert plano["padroes"]["agua"]["padrao"] == 50.0      # nivel intenso
+    assert plano["padroes"]["agua"]["padrao"] == 45.0      # nivel intenso
     assert plano["fator_atividade"] == pytest.approx(1.725)

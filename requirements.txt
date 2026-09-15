@@ -9,7 +9,10 @@ Flask>=3.0              # microframework web e roteamento
 python-dotenv>=1.0      # lê as credenciais do arquivo .env
 
 # --- Inteligência artificial ---------------------------------------------
-google-generativeai>=0.8
+google-genai>=1.0       # SDK atual do Gemini.
+                        # O pacote google-generativeai, usado na primeira
+                        # versão deste projeto, foi descontinuado pelo
+                        # Google e não recebe mais correções.
 
 # --- Geração do PDF ------------------------------------------------------
 reportlab>=4.0

@@ -203,8 +203,8 @@ def test_com_bf_usa_katch(cliente):
 def test_gerar_salva_registro_e_redireciona(cliente):
     entrar(cliente)
     dados = dict(DADOS_VALIDOS, etapa="gerar",
-                 ajuste_calorico="-22.5", fator_proteina="2.2",
-                 fator_gordura="0.9", fator_agua="40", fator_fibras="0.4")
+                 intensidade_calorica="20", fator_proteina="2.2",
+                 fator_gordura="0.8", fator_agua="40", fator_fibras="14")
     resposta = cliente.post("/", data=dados)
     assert resposta.status_code == 302
     assert "/resultado/" in resposta.headers["Location"]
@@ -217,8 +217,8 @@ def test_ajuste_do_usuario_e_gravado_como_escolhido(cliente):
     """O par padrao/escolhido e o que sustenta a analise do Capitulo 4."""
     entrar(cliente)
     dados = dict(DADOS_VALIDOS, etapa="gerar",
-                 ajuste_calorico="-15", fator_proteina="2.4",
-                 fator_gordura="0.9", fator_agua="40", fator_fibras="0.4")
+                 intensidade_calorica="15", fator_proteina="2.4",
+                 fator_gordura="0.8", fator_agua="40", fator_fibras="14")
     cliente.post("/", data=dados)
 
     perfil = banco.autenticar("gabriel@teste.com", "senha123")
@@ -255,9 +255,9 @@ def test_usuario_nao_abre_resultado_de_outro(cliente):
 def test_historico_mostra_apenas_os_proprios_calculos(cliente):
     entrar(cliente)
     cliente.post("/", data=dict(DADOS_VALIDOS, etapa="gerar",
-                                ajuste_calorico="-22.5", fator_proteina="2.2",
-                                fator_gordura="0.9", fator_agua="40",
-                                fator_fibras="0.4"))
+                                intensidade_calorica="20", fator_proteina="2.2",
+                                fator_gordura="0.8", fator_agua="40",
+                                fator_fibras="14"))
     resposta = cliente.get("/historico")
     assert resposta.status_code == 200
     assert b"Perder gordura" in resposta.data

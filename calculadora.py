@@ -64,46 +64,111 @@ FATORES_ATIVIDADE = {
     "muito_intenso": {"fator": 1.900, "rotulo": "Muito intenso (2x por dia ou trabalho pesado)"},
 }
 
-# Fator hidrico em ml por kg de peso (Tabela 2). O padrao e o ponto medio
-# da faixa indicada na tabela.
+# Fator hidrico em ml por kg de peso.
+#
+# NOTA SOBRE A EVIDENCIA: as referencias oficiais (EFSA 2010; Institute of
+# Medicine) expressam a necessidade hidrica como VOLUME TOTAL diario - cerca
+# de 2,5 L para homens e 2,0 L para mulheres, incluindo a agua dos alimentos -
+# e nao como ml por kg de peso. O calculo por quilo e uma heuristica pratica,
+# nao uma diretriz formal.
+#
+# Mantemos a heuristica porque ela individualiza a meta conforme massa
+# corporal e esforco fisico, o que e o proposito do sistema, mas isso precisa
+# constar como limitacao no Capitulo 4.
 FATORES_HIDRICOS = {
-    "sedentario":    {"padrao": 32.5, "faixa": (30.0, 35.0)},
-    "leve":          {"padrao": 40.0, "faixa": (35.0, 45.0)},
-    "moderado":      {"padrao": 40.0, "faixa": (35.0, 45.0)},
-    "intenso":       {"padrao": 50.0, "faixa": (45.0, 55.0)},
-    "muito_intenso": {"padrao": 62.5, "faixa": (55.0, 70.0)},
+    "sedentario":    {"padrao": 32.0, "faixa": (30.0, 40.0)},
+    "leve":          {"padrao": 35.0, "faixa": (30.0, 45.0)},
+    "moderado":      {"padrao": 40.0, "faixa": (30.0, 50.0)},
+    "intenso":       {"padrao": 45.0, "faixa": (35.0, 55.0)},
+    "muito_intenso": {"padrao": 50.0, "faixa": (40.0, 60.0)},
 }
 
-# Fibras em gramas por kg de peso (secao 1.5).
-FIBRAS = {"padrao": 0.4, "faixa": (0.3, 0.5)}
-
-# Parametros por objetivo (Tabela 1).
+# Fibras: gramas por 1000 kcal consumidas.
 #
-# "ajuste_calorico" e o percentual aplicado sobre o GET. Os padroes usam o
-# ponto medio das faixas descritas no trabalho: o deficit moderado de
-# "20% a 25%" vira -22,5%. As faixas cobrem do conservador ao agressivo,
-# permitindo que o usuario arraste livremente dentro do intervalo seguro.
+# MUDANCA DE BASE, e uma das decisoes mais relevantes deste modulo.
+#
+# A versao anterior calculava fibra por peso corporal (0,4 g/kg). A
+# recomendacao oficial nao usa peso: e de 14 g por 1000 kcal ingeridas
+# (Institute of Medicine; Academy of Nutrition and Dietetics), o que equivale
+# a cerca de 25 g/dia para mulheres e 38 g/dia para homens adultos.
+#
+# A base faz diferenca real. Fibra acompanha o VOLUME de alimento, nao o
+# tamanho da pessoa: alguem de 60 kg comendo 3000 kcal precisa de mais fibra
+# do que alguem de 90 kg comendo 1800 kcal - e a formula por peso inverte
+# essa relacao. Ancorar na energia tambem faz a meta se ajustar sozinha
+# quando o usuario move o controle calorico.
+FIBRAS = {"padrao": 14.0, "faixa": (10.0, 20.0)}
+
+# Parametros por objetivo.
+#
+# --------------------------------------------------------------------------
+# PROTEINA  -  faixa 1,6 a 2,4 g/kg
+# --------------------------------------------------------------------------
+# Faixa sustentada por tres fontes convergentes:
+#   MORTON et al. (2018), meta-analise com meta-regressao, identifica plato
+#   dos ganhos de massa magra em torno de 1,6 g/kg (intervalo de confianca
+#   ate 2,2);
+#   NUNES et al. (2022), revisao sistematica, confirma >= 1,6 g/kg para
+#   adultos jovens;
+#   revisao de escopo de recomendacoes de entidades internacionais (2025)
+#   reporta consenso em 1,6 a 2,4 g/kg/dia.
+#
+# A faixa e a MESMA para os tres objetivos porque e assim que a literatura a
+# apresenta. O que muda entre eles e o PADRAO: em deficit calorico a
+# proteina protege a massa magra, entao a recomendacao inicial fica no terco
+# superior da faixa.
+#
+# --------------------------------------------------------------------------
+# GORDURA  -  faixa 0,5 a 1,5 g/kg
+# --------------------------------------------------------------------------
+# EVIDENCIA MAIS FRACA QUE A DA PROTEINA, e isso precisa ser dito. A revisao
+# de escopo de 2025 registra que as recomendacoes de especialistas "deram
+# atencao minima a nutrientes como gorduras, fibras e micronutrientes".
+# Estudos com atletas de fisico reportam ingestao de 0,6 a 0,8 g/kg em fase
+# competitiva e recomendam 10% a 25% das calorias totais, alertando contra
+# gordura muito baixa por periodos longos.
+#
+# Adotamos faixa ampla justamente porque a evidencia nao autoriza precisao
+# maior. Registrar essa incerteza e mais honesto do que fingir um numero
+# exato - e e material para a discussao critica do Capitulo 4.
+#
+# --------------------------------------------------------------------------
+# AJUSTE CALORICO  -  deficit ate 25%, superavit ate 20%
+# --------------------------------------------------------------------------
+# O teto anterior de 35% de deficit era agressivo demais. A literatura
+# recomenda perda de ate 0,5% do peso corporal por semana para preservar
+# massa livre de gordura, e deficits de 250 a 1000 kcal/dia. Para a maioria
+# dos perfis, 25% ja se aproxima do limite superior seguro.
+#
+# "sentido" diz a direcao do ajuste: -1 reduz calorias, +1 aumenta, 0
+# mantem. Ele existe para que a INTERFACE possa exibir o controle sempre em
+# valores positivos e crescentes da esquerda para a direita - arrastar para
+# a direita intensifica - enquanto o calculo continua usando o percentual
+# assinado, que e a grandeza fisica correta.
 OBJETIVOS = {
     "perder": {
         "rotulo": "Perder gordura",
         "descricao": "Comer um pouco menos do que você gasta, preservando músculo.",
-        "ajuste_calorico": {"padrao": -22.5, "faixa": (-35.0, -10.0)},
-        "proteina":        {"padrao": 2.2,   "faixa": (2.0, 2.4)},
-        "gordura":         {"padrao": 0.9,   "faixa": (0.8, 1.0)},
+        "ajuste_calorico": {"padrao": -20.0, "faixa": (-25.0, -10.0),
+                            "sentido": -1, "rotulo": "Intensidade do déficit"},
+        "proteina":        {"padrao": 2.2,   "faixa": (1.6, 2.4)},
+        "gordura":         {"padrao": 0.8,   "faixa": (0.5, 1.5)},
     },
     "manter": {
         "rotulo": "Manter o peso",
         "descricao": "Comer exatamente o que você gasta.",
-        "ajuste_calorico": {"padrao": 0.0,   "faixa": (-5.0, 5.0)},
-        "proteina":        {"padrao": 2.0,   "faixa": (1.8, 2.2)},
-        "gordura":         {"padrao": 1.0,   "faixa": (0.9, 1.1)},
+        "ajuste_calorico": {"padrao": 0.0,   "faixa": (0.0, 0.0),
+                            "sentido": 0, "rotulo": "Manutenção"},
+        "proteina":        {"padrao": 1.8,   "faixa": (1.6, 2.4)},
+        "gordura":         {"padrao": 1.0,   "faixa": (0.5, 1.5)},
     },
     "ganhar": {
         "rotulo": "Ganhar massa muscular",
         "descricao": "Comer acima do seu gasto para dar material ao músculo.",
-        "ajuste_calorico": {"padrao": 10.0,  "faixa": (5.0, 25.0)},
-        "proteina":        {"padrao": 1.8,   "faixa": (1.6, 2.0)},
-        "gordura":         {"padrao": 1.1,   "faixa": (1.0, 1.2)},
+        "ajuste_calorico": {"padrao": 10.0,  "faixa": (5.0, 20.0),
+                            "sentido": 1, "rotulo": "Intensidade do superávit"},
+        "proteina":        {"padrao": 2.0,   "faixa": (1.6, 2.4)},
+        "gordura":         {"padrao": 1.0,   "faixa": (0.5, 1.5)},
     },
 }
 
@@ -115,15 +180,44 @@ def padroes_do_objetivo(objetivo, nivel_atividade):
     E a unica fonte que a interface consulta para montar os controles
     deslizantes. Retornar padrao e faixa juntos garante que o valor inicial
     do controle e os seus limites nunca fiquem fora de sincronia.
+
+    O ajuste calorico ganha ainda os campos "padrao_visivel" e
+    "faixa_visivel", em modulo. Servem para desenhar o controle: um
+    deslizante que vai de -25 a -10 coloca o deficit MAIS agressivo na
+    esquerda e o mais suave na direita, invertendo a intuicao de que
+    arrastar para a direita intensifica. Exibindo 10 a 25 e guardando o
+    sinal no servidor, o controle passa a se comportar como o usuario
+    espera sem que o calculo perca a grandeza correta.
     """
     parametros = OBJETIVOS[objetivo]
+    calorico = dict(parametros["ajuste_calorico"])
+    minimo, maximo = calorico["faixa"]
+    calorico["faixa_visivel"] = (min(abs(minimo), abs(maximo)),
+                                 max(abs(minimo), abs(maximo)))
+    calorico["padrao_visivel"] = abs(calorico["padrao"])
+
     return {
-        "ajuste_calorico": dict(parametros["ajuste_calorico"]),
+        "ajuste_calorico": calorico,
         "proteina":        dict(parametros["proteina"]),
         "gordura":         dict(parametros["gordura"]),
         "agua":            dict(FATORES_HIDRICOS[nivel_atividade]),
         "fibras":          dict(FIBRAS),
     }
+
+
+def ajuste_assinado(objetivo, intensidade):
+    """
+    Converte a intensidade escolhida na interface (sempre positiva) no
+    percentual assinado que o calculo usa.
+
+        perder, 20  ->  -20.0
+        ganhar, 10  ->  +10.0
+        manter, x   ->    0.0
+
+    Concentrar a conversao aqui impede que a regra do sinal se espalhe pelo
+    roteamento ou pelo template.
+    """
+    return OBJETIVOS[objetivo]["ajuste_calorico"]["sentido"] * abs(intensidade)
 
 
 # ==========================================================================
@@ -313,11 +407,21 @@ def calcular_agua(peso, nivel_atividade, fator=None):
     return peso * fator
 
 
-def calcular_fibras(peso, fator=None):
-    """Meta diaria de fibras em gramas.  =  peso x fator (padrao 0,4)"""
+def calcular_fibras(meta_calorica, fator=None):
+    """
+    Meta diaria de fibras em gramas.
+
+        Fibras = (meta calorica / 1000) x fator     (padrao 14 g/1000 kcal)
+
+    ATENCAO A ASSINATURA: esta funcao recebe a META CALORICA, nao o peso.
+    A recomendacao oficial ancora a fibra na energia ingerida, e nao na
+    massa corporal (ver a constante FIBRAS, no topo do arquivo, para o
+    motivo). Um efeito colateral desejavel: quando o usuario arrasta o
+    controle calorico, a meta de fibra acompanha sozinha.
+    """
     if fator is None:
         fator = FIBRAS["padrao"]
-    return peso * fator
+    return (meta_calorica / 1000) * fator
 
 
 # ==========================================================================
@@ -363,7 +467,7 @@ def montar_plano(peso, altura_cm, idade, sexo, nivel_atividade, objetivo,
         "fator_atividade": FATORES_ATIVIDADE[nivel_atividade]["fator"],
         "meta_calorica": meta_calorica,
         "agua_ml": calcular_agua(peso, nivel_atividade, fator_agua),
-        "fibras_g": calcular_fibras(peso, fator_fibras),
+        "fibras_g": calcular_fibras(meta_calorica, fator_fibras),
         "fator_agua": fator_agua,
         "fator_fibras": fator_fibras,
         "ajuste_calorico": ajuste_calorico,

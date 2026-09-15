@@ -235,7 +235,10 @@ def calcular():
                       set(calculadora.FATORES_ATIVIDADE), erros)
     objetivo = ler_opcao("objetivo", "o objetivo",
                          set(calculadora.OBJETIVOS), erros)
-    refeicoes = ler_numero("refeicoes_por_dia", "o número de refeições", 2, 8, erros)
+    # A faixa vai de 1 a 6 porque e isso que a tela oferece. O prototipo
+    # aceitava ate 8, mas exigia no minimo 2 - quem faz uma refeicao unica
+    # por dia (jejum intermitente, turno da noite) via um erro sem motivo.
+    refeicoes = ler_numero("refeicoes_por_dia", "o número de refeições", 1, 6, erros)
 
     restricoes = ler_lista("restricoes")
     preferencias = request.form.get("preferencias", "").strip()
@@ -258,16 +261,25 @@ def calcular():
     # respeitar o que o usuario acabou de arrastar.
     etapa = request.form.get("etapa", "calcular")
     ajustes = {}
-    if "ajuste_calorico" in request.form:
+    if "intensidade_calorica" in request.form:
         for campo, rotulo, minimo, maximo in [
-            ("ajuste_calorico", "o ajuste calórico", -40, 30),
-            ("fator_proteina", "o fator de proteína", 1.0, 3.0),
+            ("fator_proteina", "o fator de proteína", 1.6, 2.4),
             ("fator_gordura", "o fator de gordura", 0.5, 1.5),
-            ("fator_agua", "o fator de hidratação", 25, 80),
-            ("fator_fibras", "o fator de fibras", 0.2, 0.6),
+            ("fator_agua", "o fator de hidratação", 25, 65),
+            ("fator_fibras", "o fator de fibras", 10, 20),
         ]:
             ajustes[campo] = ler_numero(campo, rotulo, minimo, maximo, erros,
                                         obrigatorio=False)
+
+        # O controle calorico chega SEMPRE positivo, porque um deslizante que
+        # vai de -25 a -10 colocaria o deficit mais agressivo na esquerda e
+        # inverteria a intuicao de "arrastar para a direita intensifica".
+        # A calculadora devolve o sinal conforme o objetivo escolhido.
+        intensidade = ler_numero("intensidade_calorica", "a intensidade",
+                                 0, 25, erros, obrigatorio=False)
+        if intensidade is not None:
+            ajustes["ajuste_calorico"] = calculadora.ajuste_assinado(
+                objetivo, intensidade)
 
     plano = calculadora.montar_plano(
         peso=peso, altura_cm=altura_cm, idade=idade, sexo=sexo,

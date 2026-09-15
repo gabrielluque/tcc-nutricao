@@ -52,6 +52,10 @@ def db_com_alimentos(db):
         (8,  "Banana, prata",             "Frutas",       98, 1.3,  0.1,  26.0, 2.0),
         (9,  "Aveia, flocos",             "Cereais",     394, 13.9, 8.5,  66.6, 9.1),
         (10, "Carne, bovina, patinho",    "Carnes",      219, 35.9, 7.3,   0.0, 0.0),
+        # Prato preparado: o nome nao revela que leva creme de leite. Esta
+        # aqui para exercitar a regra dos alimentos preparados.
+        (11, "Estrogonofe de carne",      "Alimentos preparados",
+                                          143, 10.6, 9.4,   3.5, 0.3),
     ]
     for item in amostra:
         banco.inserir_alimento(*item, caminho=db)
@@ -147,7 +151,7 @@ def test_email_duplicado_e_recusado(db):
 # ==========================================================================
 
 def test_catalogo_sem_restricao_devolve_tudo(db_com_alimentos):
-    assert len(banco.buscar_catalogo(caminho=db_com_alimentos)) == 10
+    assert len(banco.buscar_catalogo(caminho=db_com_alimentos)) == 11
 
 
 def test_intolerancia_a_lactose_remove_laticinios(db_com_alimentos):
@@ -162,6 +166,8 @@ def test_restricao_por_nome_livre(db_com_alimentos):
     """Restricao fora do dicionario e usada literalmente."""
     catalogo = banco.buscar_catalogo(["banana"], caminho=db_com_alimentos)
     assert all("banana" not in a["nome"].lower() for a in catalogo)
+    # 11 na base, menos a banana e menos o prato preparado (ver o bloco
+    # "ALIMENTOS PREPARADOS" mais abaixo).
     assert len(catalogo) == 9
 
 
@@ -209,6 +215,54 @@ def test_catalogo_e_excluidos_nao_se_sobrepoem(db_com_alimentos):
     assert len(dentro | fora) == banco.contar_alimentos(caminho=db_com_alimentos)
 
 
+# ==========================================================================
+# ALIMENTOS PREPARADOS
+#
+# Regressao de um erro encontrado contra a base real: com a restricao
+# "lactose" declarada, o sistema devolveu 250 g de estrogonofe de carne -
+# que leva creme de leite. O filtro nao falhou, leu o nome; o nome e que
+# nao diz o que tem dentro.
+#
+# A regra que corrige isso nao e uma palavra nova na lista: e recusar o que
+# nao se consegue verificar.
+# ==========================================================================
+
+def test_prato_preparado_sai_quando_ha_restricao(db_com_alimentos):
+    """O caso exato que falhou na base real."""
+    catalogo = banco.buscar_catalogo(["lactose"], caminho=db_com_alimentos)
+    assert all(a["grupo"] != banco.GRUPO_PREPARADO for a in catalogo)
+    assert all("estrogonofe" not in a["nome"].lower() for a in catalogo)
+
+
+def test_a_regra_vale_para_qualquer_restricao(db_com_alimentos):
+    """Nao e uma correcao de lactose: e uma posicao sobre ingredientes
+    desconhecidos. Vale para gluten, ovo, restricao livre, todas."""
+    for restricao in (["gluten"], ["ovo"], ["vegano"], ["quiabo"]):
+        catalogo = banco.buscar_catalogo(restricao, caminho=db_com_alimentos)
+        assert all(a["grupo"] != banco.GRUPO_PREPARADO for a in catalogo), restricao
+
+
+def test_sem_restricao_os_pratos_preparados_continuam_disponiveis(db_com_alimentos):
+    """Quem nao declarou restricao nenhuma nao perde nada. A exclusao e uma
+    precaucao dirigida a quem declarou, e nao um empobrecimento da base."""
+    catalogo = banco.buscar_catalogo(caminho=db_com_alimentos)
+    assert any(a["grupo"] == banco.GRUPO_PREPARADO for a in catalogo)
+
+
+def test_restricao_vazia_nao_conta_como_restricao(db_com_alimentos):
+    """Lista vazia e string em branco nao sao declaracao de restricao."""
+    for nada in ([], None, [""], ["   "]):
+        catalogo = banco.buscar_catalogo(nada, caminho=db_com_alimentos)
+        assert len(catalogo) == 11, nada
+
+
+def test_prato_preparado_aparece_na_lista_de_excluidos(db_com_alimentos):
+    """O usuario tem direito de saber que a feijoada sumiu porque o sistema
+    nao conhece a composicao dela - e nao porque ela tem lactose."""
+    excluidos = banco.listar_excluidos(["lactose"], caminho=db_com_alimentos)
+    assert "Estrogonofe de carne" in {a["nome"] for a in excluidos}
+
+
 def test_filtro_por_grupo(db_com_alimentos):
     catalogo = banco.buscar_catalogo(grupos=["Frutas", "Cereais"],
                                      caminho=db_com_alimentos)
@@ -216,7 +270,7 @@ def test_filtro_por_grupo(db_com_alimentos):
 
 
 # ==========================================================================
-# EVENTOS
+# EVENTOS ANONIMOS
 # ==========================================================================
 
 def test_evento_e_registrado(db):

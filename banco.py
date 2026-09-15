@@ -390,9 +390,10 @@ def excluir_conta(usuario_id, caminho=None):
 # LIMITACAO CONHECIDA, a registrar no Capitulo 4: o filtro opera sobre o
 # NOME do alimento, nao sobre uma classificacao formal de ingredientes. A
 # TACO nao traz marcacao de alergenos, e construir essa taxonomia esta fora
-# do escopo deste trabalho. O mapeamento cobre os casos mais comuns;
-# preparacoes compostas podem escapar. Por isso a interface mostra ao
-# usuario quais alimentos foram excluidos, permitindo conferencia.
+# do escopo deste trabalho. O mapeamento cobre os casos mais comuns.
+# Preparacoes compostas sao tratadas a parte, logo abaixo. Por isso a
+# interface mostra ao usuario quais alimentos foram excluidos, permitindo
+# conferencia.
 RESTRICOES_CONHECIDAS = {
     "lactose": ["leite", "queijo", "iogurte", "requeijao", "manteiga",
                 "creme de leite", "doce de leite", "coalhada", "ricota"],
@@ -407,6 +408,18 @@ RESTRICOES_CONHECIDAS = {
                "camarao", "linguica", "presunto", "leite", "queijo", "ovo",
                "iogurte", "manteiga", "mel"],
 }
+
+
+# Grupo da propria TACO que reune os pratos de varios ingredientes:
+# estrogonofe, feijoada, vatapa, salpicao, yakisoba. Sao 32 itens, e a
+# composicao deles nao esta em lugar nenhum da tabela. O motivo de existir
+# esta constante esta explicado em buscar_catalogo.
+GRUPO_PREPARADO = "Alimentos preparados"
+
+
+def _restricao_declarada(restricoes):
+    """Ha alguma restricao alimentar valida declarada?"""
+    return bool(expandir_restricoes(restricoes))
 
 
 def expandir_restricoes(restricoes):
@@ -434,6 +447,34 @@ def buscar_catalogo(restricoes=None, grupos=None, caminho=None):
     chega a IA, e portanto nao pode aparecer na dieta do usuario. A restricao
     alimentar e aplicada aqui, em SQL, e nao como pedido em linguagem
     natural dentro do prompt.
+
+    ----------------------------------------------------------------------
+    POR QUE OS PRATOS PREPARADOS SAEM QUANDO HA QUALQUER RESTRICAO
+    ----------------------------------------------------------------------
+    O filtro por nome so enxerga o que o nome diz, e o nome de um prato nao
+    diz seus ingredientes. Um teste real com a restricao "lactose" devolveu
+    250 g de "Estrogonofe de carne" - que leva creme de leite. O filtro nao
+    falhou: ele leu o nome, e no nome nao ha laticinio nenhum.
+
+    A correcao nao pode ser acrescentar "estrogonofe" a lista de termos,
+    porque a proxima preparacao que ninguem lembrou escaparia igual. A regra
+    e outra, e vale para qualquer restricao:
+
+        O SISTEMA NAO LIBERA O QUE NAO CONSEGUE VERIFICAR.
+
+    Havendo qualquer restricao declarada, o grupo "Alimentos preparados" da
+    TACO inteiro sai do catalogo. Sao 32 pratos de varios ingredientes -
+    feijoada, vatapa, lasanha, salpicao -, e a composicao deles nao esta em
+    lugar nenhum da tabela.
+
+    Quem define o que e "preparacao composta" e a propria TACO, pela
+    classificacao dela. Isso importa: o criterio e verificavel na fonte, e
+    nao um julgamento meu sobre quais pratos parecem suspeitos.
+
+    O preco e excluir junto alguns pratos inocentes, como a salada de
+    legumes cozida no vapor. Numa restricao alimentar, errar para o lado de
+    oferecer menos e a unica direcao aceitavel de erro. Quem nao declarou
+    restricao nenhuma continua vendo a base inteira.
     """
     sql = "SELECT * FROM alimentos"
     condicoes, parametros = [], []
@@ -441,6 +482,10 @@ def buscar_catalogo(restricoes=None, grupos=None, caminho=None):
     for termo in expandir_restricoes(restricoes):
         condicoes.append("nome_normalizado NOT LIKE ?")
         parametros.append(f"%{termo}%")
+
+    if _restricao_declarada(restricoes):
+        condicoes.append("grupo <> ?")
+        parametros.append(GRUPO_PREPARADO)
 
     if grupos:
         marcadores = ",".join("?" for _ in grupos)
@@ -462,17 +507,27 @@ def listar_excluidos(restricoes, caminho=None):
     Existe para transparencia: a interface mostra o que a restricao removeu,
     permitindo que o usuario perceba um filtro amplo demais - declarar
     "carne vermelha" tambem remove "carne de frango moida" - e corrija.
+
+    Os pratos preparados entram nesta lista pelo mesmo motivo. Eles saem do
+    catalogo por precaucao, nao por conterem o alergenio comprovadamente
+    (ver buscar_catalogo), e o usuario tem direito de saber que a feijoada
+    sumiu porque o sistema nao conhece a composicao dela - e nao porque ela
+    tem lactose.
     """
     termos = expandir_restricoes(restricoes)
     if not termos:
         return []
 
-    condicoes = " OR ".join("nome_normalizado LIKE ?" for _ in termos)
+    condicoes = [f"({' OR '.join('nome_normalizado LIKE ?' for _ in termos)})"]
     parametros = [f"%{t}%" for t in termos]
+
+    condicoes.append("grupo = ?")
+    parametros.append(GRUPO_PREPARADO)
 
     with conectar(caminho) as conexao:
         return [dict(linha) for linha in conexao.execute(
-            f"SELECT * FROM alimentos WHERE {condicoes} ORDER BY nome", parametros)]
+            f"SELECT * FROM alimentos WHERE {' OR '.join(condicoes)} "
+            "ORDER BY nome", parametros)]
 
 
 def inserir_alimento(codigo_taco, nome, grupo, kcal, proteina_g, gordura_g,

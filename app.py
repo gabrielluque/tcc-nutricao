@@ -43,10 +43,59 @@ load_dotenv()
 
 app = Flask(__name__)
 
-# A chave de sessao vem do .env. O valor de desenvolvimento existe apenas
-# para que o projeto rode logo apos o clone; em producao a variavel de
-# ambiente e obrigatoria.
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "desenvolvimento-apenas")
+# --------------------------------------------------------------------------
+# CONFIGURACAO: DESENVOLVIMENTO x PRODUCAO
+#
+# O sistema roda em duas situacoes muito diferentes. Na maquina do
+# desenvolvedor ele precisa subir logo apos o clone, sem configuracao
+# nenhuma. No servidor, com voluntarios reais criando conta e informando
+# peso e restricoes alimentares, as mesmas facilidades viram falhas de
+# seguranca.
+#
+# PRODUCAO=1 e o que separa os dois mundos. Ele e definido no servidor, no
+# arquivo wsgi.py.
+# --------------------------------------------------------------------------
+
+EM_PRODUCAO = os.environ.get("PRODUCAO") == "1"
+
+chave = os.environ.get("FLASK_SECRET_KEY")
+
+if not chave:
+    if EM_PRODUCAO:
+        # Falhar aqui, na subida, e deliberado. A chave assina os cookies de
+        # sessao: com um valor publico e conhecido, qualquer pessoa forja o
+        # cookie de qualquer usuario e le os dados de saude alheios. Um site
+        # que sobe quebrado e visivel na hora; um site que sobe inseguro so
+        # aparece depois, e talvez nunca.
+        raise RuntimeError(
+            "FLASK_SECRET_KEY nao definida. Em producao ela e obrigatoria. "
+            "Gere uma com: python -c \"import secrets; "
+            "print(secrets.token_hex(32))\""
+        )
+    chave = "desenvolvimento-apenas"
+
+app.secret_key = chave
+
+app.config.update(
+    # O cookie de sessao nunca e lido por JavaScript. Fecha a porta para que
+    # um script injetado numa pagina roube a sessao de quem esta logado.
+    SESSION_COOKIE_HTTPONLY=True,
+
+    # Em producao o cookie so viaja por HTTPS. Sem isso ele atravessaria a
+    # rede em texto claro no primeiro acesso por HTTP - e o wi-fi da
+    # faculdade e exatamente o cenario em que isso acontece.
+    SESSION_COOKIE_SECURE=EM_PRODUCAO,
+
+    # O cookie nao acompanha requisicoes vindas de outros sites, o que
+    # neutraliza o ataque em que uma pagina qualquer envia um formulario
+    # para a nossa aplicacao usando a sessao de quem esta logado.
+    SESSION_COOKIE_SAMESITE="Lax",
+
+    # Tamanho maximo do corpo de uma requisicao: 1 MB. Os formularios do
+    # sistema sao pequenos; o limite evita que alguem prenda o servidor
+    # enviando um envio gigante.
+    MAX_CONTENT_LENGTH=1024 * 1024,
+)
 
 LIMITE_DIETAS_POR_DIA = int(os.environ.get("LIMITE_DIETAS_POR_DIA", 10))
 

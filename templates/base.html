@@ -21,6 +21,7 @@
 <nav class="navbar navbar-expand-lg barra-topo">
   <div class="container">
     <a class="navbar-brand" href="{{ url_for('calcular') if session.usuario_id else url_for('login') }}">
+      <span class="marca-ponto" aria-hidden="true"></span>
       Plano Nutricional
     </a>
     {% if session.usuario_id %}
@@ -48,8 +49,7 @@
   {% block conteudo %}{% endblock %}
 </main>
 
-<footer class="container py-4 texto-suave small">
-  <hr>
+<footer class="container py-4 texto-suave small rodape">
   <p class="mb-1">
     Trabalho de Curso II — Ciência da Computação, UNIP Jacareí.
     Cálculos baseados nas equações de Mifflin-St Jeor e Katch-McArdle;

@@ -52,6 +52,7 @@ DECISOES DE PROJETO
    injecao de SQL.
 """
 
+import json
 import os
 import sqlite3
 import unicodedata
@@ -141,6 +142,15 @@ CREATE TABLE IF NOT EXISTS registros (
     objetivo                  TEXT    NOT NULL,
     refeicoes_por_dia         INTEGER NOT NULL,
 
+    -- O que a pessoa declarou na tela, guardado com o calculo.
+    --
+    -- O cardapio e gerado em OUTRA requisicao, depois que o resultado ja
+    -- esta salvo. Sem estas duas colunas a restricao alimentar se perderia
+    -- no caminho entre uma tela e a seguinte - e o cardapio seria montado
+    -- sobre a base inteira, para alguem que declarou alergia.
+    restricoes                TEXT    NOT NULL DEFAULT '',
+    preferencias              TEXT    NOT NULL DEFAULT '',
+
     -- Parametros ajustaveis: recomendado x escolhido
     ajuste_calorico_padrao    REAL    NOT NULL,
     ajuste_calorico_usado     REAL    NOT NULL,
@@ -178,6 +188,28 @@ CREATE TABLE IF NOT EXISTS pedidos_ajuste (
     ordem              INTEGER NOT NULL,
     texto              TEXT    NOT NULL,
     criado_em          TEXT    NOT NULL,
+    FOREIGN KEY (registro_id) REFERENCES registros (id) ON DELETE CASCADE
+);
+
+-- Cardapios gerados, um por registro.
+--
+-- O conteudo vai como JSON em uma coluna so. As refeicoes sao um documento
+-- aninhado que o sistema le inteiro e nunca consulta por pedaco - modelar
+-- isso em tres tabelas relacionadas custaria complexidade sem comprar nada.
+--
+-- O que o Capitulo 4 vai CONTAR, porem, tem coluna propria: quantos itens o
+-- modelo inventou (descartados) e quanto o sistema precisou reescalar
+-- (fator_de_ajuste). Numero que vai virar estatistica nao pode estar
+-- enterrado dentro de um JSON.
+CREATE TABLE IF NOT EXISTS cardapios (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    registro_id        INTEGER NOT NULL UNIQUE,
+    criado_em          TEXT    NOT NULL,
+    modelo             TEXT    NOT NULL,
+    descartados        INTEGER NOT NULL DEFAULT 0,
+    fator_de_ajuste    REAL    NOT NULL DEFAULT 1.0,
+    substituicoes      INTEGER NOT NULL DEFAULT 0,
+    conteudo           TEXT    NOT NULL,
     FOREIGN KEY (registro_id) REFERENCES registros (id) ON DELETE CASCADE
 );
 
@@ -236,10 +268,52 @@ def conectar(caminho=None):
         conexao.close()
 
 
+# Colunas acrescentadas ao esquema DEPOIS que o sistema ja estava no ar.
+#
+# CREATE TABLE IF NOT EXISTS nao altera uma tabela que ja existe: num banco
+# novo a coluna nasce junto, num banco antigo ela simplesmente nao aparece. O
+# sintoma seria um "no such column" que acontece so em producao, no banco com
+# os dados dos voluntarios - o unico lugar onde nao da para testar a vontade.
+#
+# Formato: tabela -> [(nome da coluna, definicao SQL)].
+COLUNAS_ACRESCENTADAS = {
+    "registros": [
+        ("restricoes",   "TEXT NOT NULL DEFAULT ''"),
+        ("preferencias", "TEXT NOT NULL DEFAULT ''"),
+    ],
+}
+
+
+def _migrar(conexao):
+    """
+    Acrescenta ao banco existente as colunas que o esquema ganhou depois.
+
+    Roda a cada subida da aplicacao e e idempotente: confere o que a tabela
+    ja tem antes de mexer. Um ALTER TABLE ADD COLUMN com DEFAULT preenche as
+    linhas antigas sem perder nada - e o caminho seguro para evoluir um banco
+    que ja tem gente dentro.
+
+    Os nomes entram na query por formatacao de texto, e nao por "?", porque
+    SQL nao aceita placeholder em nome de tabela ou de coluna. Isso so e
+    seguro porque os valores vem de COLUNAS_ACRESCENTADAS, uma constante
+    deste arquivo: nada aqui vem do usuario.
+    """
+    for tabela, colunas in COLUNAS_ACRESCENTADAS.items():
+        existentes = {linha["name"] for linha in
+                      conexao.execute(f"PRAGMA table_info({tabela})")}
+        if not existentes:
+            continue
+        for nome, definicao in colunas:
+            if nome not in existentes:
+                conexao.execute(
+                    f"ALTER TABLE {tabela} ADD COLUMN {nome} {definicao}")
+
+
 def criar_esquema(caminho=None):
     """Cria todas as tabelas. Seguro executar mais de uma vez."""
     with conectar(caminho) as conexao:
         conexao.executescript(ESQUEMA)
+        _migrar(conexao)
 
 
 def _agora():
@@ -559,7 +633,8 @@ def contar_alimentos(caminho=None):
 # ==========================================================================
 
 def salvar_registro(usuario_id, peso, bf, nivel_atividade, objetivo,
-                    refeicoes_por_dia, plano, caminho=None):
+                    refeicoes_por_dia, plano, restricoes="", preferencias="",
+                    caminho=None):
     """
     Grava um calculo completo e devolve o id do registro.
 
@@ -568,6 +643,10 @@ def salvar_registro(usuario_id, peso, bf, nivel_atividade, objetivo,
     ajustavel. Essa duplicidade e intencional: sem o valor padrao gravado
     junto, seria impossivel saber depois se o usuario aceitou a recomendacao
     ou a alterou.
+
+    "restricoes" e "preferencias" chegam como o texto que a pessoa digitou.
+    Ficam guardados porque o cardapio e montado depois, em outra requisicao:
+    sem eles, a restricao alimentar se perderia entre uma tela e a seguinte.
     """
     padroes = plano["padroes"]
     with conectar(caminho) as conexao:
@@ -575,6 +654,7 @@ def salvar_registro(usuario_id, peso, bf, nivel_atividade, objetivo,
             """INSERT INTO registros (
                    usuario_id, criado_em,
                    peso, bf, nivel_atividade, objetivo, refeicoes_por_dia,
+                   restricoes, preferencias,
                    ajuste_calorico_padrao, ajuste_calorico_usado,
                    fator_proteina_padrao,  fator_proteina_usado,
                    fator_gordura_padrao,   fator_gordura_usado,
@@ -582,9 +662,10 @@ def salvar_registro(usuario_id, peso, bf, nivel_atividade, objetivo,
                    fator_fibras_padrao,    fator_fibras_usado,
                    tmb, equacao_utilizada, get, meta_calorica,
                    proteina_g, gordura_g, carboidrato_g, agua_ml, fibras_g
-               ) VALUES (?,?, ?,?,?,?,?, ?,?, ?,?, ?,?, ?,?, ?,?, ?,?,?,?, ?,?,?,?,?)""",
+               ) VALUES (?,?, ?,?,?,?,?, ?,?, ?,?, ?,?, ?,?, ?,?, ?,?, ?,?,?,?, ?,?,?,?,?)""",
             (usuario_id, _agora(),
              peso, bf, nivel_atividade, objetivo, refeicoes_por_dia,
+             restricoes, preferencias,
              padroes["ajuste_calorico"]["padrao"], plano["ajuste_calorico"],
              padroes["proteina"]["padrao"],        plano["fator_proteina"],
              padroes["gordura"]["padrao"],         plano["fator_gordura"],
@@ -631,6 +712,95 @@ def evolucao_de_peso(usuario_id, caminho=None):
         return [dict(linha) for linha in conexao.execute(
             """SELECT criado_em, peso, bf, meta_calorica FROM registros
                WHERE usuario_id = ? ORDER BY criado_em ASC""", (usuario_id,))]
+
+
+# ==========================================================================
+# 5b. CARDAPIOS GERADOS
+#
+# Um cardapio por registro. Guardar em vez de gerar a cada visita nao e so
+# economia de cota da API: e o que faz o cardapio ser O MESMO quando a pessoa
+# volta na tela. Um plano alimentar que muda sozinho a cada F5 nao e um plano.
+# ==========================================================================
+
+def salvar_cardapio(registro_id, cardapio, caminho=None):
+    """
+    Grava (ou substitui) o cardapio de um registro.
+
+    Recebe o dicionario devolvido por integracao_ia.gerar_cardapio. As
+    refeicoes vao como JSON; os numeros que viram estatistica no Capitulo 4
+    ganham coluna propria.
+    """
+    with conectar(caminho) as conexao:
+        conexao.execute(
+            """INSERT OR REPLACE INTO cardapios
+               (registro_id, criado_em, modelo, descartados, fator_de_ajuste,
+                substituicoes, conteudo)
+               VALUES (?, ?, ?, ?, ?,
+                       COALESCE((SELECT substituicoes FROM cardapios
+                                 WHERE registro_id = ?), 0),
+                       ?)""",
+            (registro_id, _agora(), cardapio.get("modelo", ""),
+             len(cardapio.get("descartados", [])),
+             cardapio.get("fator_de_ajuste", 1.0),
+             registro_id,
+             json.dumps(cardapio, ensure_ascii=False)),
+        )
+
+
+def buscar_cardapio(registro_id, caminho=None):
+    """Devolve o cardapio gravado, ja convertido de volta, ou None."""
+    with conectar(caminho) as conexao:
+        linha = conexao.execute(
+            "SELECT * FROM cardapios WHERE registro_id = ?",
+            (registro_id,)).fetchone()
+
+    if linha is None:
+        return None
+
+    cardapio = json.loads(linha["conteudo"])
+    cardapio["criado_em"] = linha["criado_em"]
+    cardapio["substituicoes"] = linha["substituicoes"]
+    return cardapio
+
+
+def registrar_substituicao(registro_id, cardapio, caminho=None):
+    """
+    Grava o cardapio depois de uma troca e soma uma substituicao ao contador.
+
+    O contador e material do Capitulo 4: quantas vezes as pessoas trocaram um
+    alimento mede, com dado e nao com opiniao, o quanto elas usam a liberdade
+    que o sistema oferece - que e a hipotese do trabalho.
+    """
+    with conectar(caminho) as conexao:
+        conexao.execute(
+            """UPDATE cardapios
+               SET conteudo = ?, substituicoes = substituicoes + 1
+               WHERE registro_id = ?""",
+            (json.dumps(cardapio, ensure_ascii=False), registro_id),
+        )
+
+
+def resumo_de_cardapios(caminho=None):
+    """
+    Numeros agregados dos cardapios gerados, para o Capitulo 4.
+
+    Responde: o modelo respeita o catalogo? (descartes) O sistema precisa
+    corrigir muito a conta dele? (fator) As pessoas trocam alimentos?
+    """
+    with conectar(caminho) as conexao:
+        linha = conexao.execute(
+            """SELECT COUNT(*)              AS gerados,
+                      SUM(descartados)      AS descartados,
+                      AVG(fator_de_ajuste)  AS fator_medio,
+                      SUM(substituicoes)    AS substituicoes
+               FROM cardapios""").fetchone()
+
+    return {
+        "gerados": linha["gerados"] or 0,
+        "itens_descartados": linha["descartados"] or 0,
+        "fator_medio": round(linha["fator_medio"], 3) if linha["fator_medio"] else None,
+        "substituicoes": linha["substituicoes"] or 0,
+    }
 
 
 # ==========================================================================

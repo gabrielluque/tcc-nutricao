@@ -56,6 +56,9 @@ def db_com_alimentos(db):
         # aqui para exercitar a regra dos alimentos preparados.
         (11, "Estrogonofe de carne",      "Alimentos preparados",
                                           143, 10.6, 9.4,   3.5, 0.3),
+        # Laticinio que a lista original deixava passar: o nome nao tem
+        # "leite" nem "queijo", tem "lactea".
+        (12, "Bebida lactea, pessego",    "Laticinios",    77, 1.8,  1.2,  14.6, 0.0),
     ]
     for item in amostra:
         banco.inserir_alimento(*item, caminho=db)
@@ -151,7 +154,7 @@ def test_email_duplicado_e_recusado(db):
 # ==========================================================================
 
 def test_catalogo_sem_restricao_devolve_tudo(db_com_alimentos):
-    assert len(banco.buscar_catalogo(caminho=db_com_alimentos)) == 11
+    assert len(banco.buscar_catalogo(caminho=db_com_alimentos)) == 12
 
 
 def test_intolerancia_a_lactose_remove_laticinios(db_com_alimentos):
@@ -162,13 +165,25 @@ def test_intolerancia_a_lactose_remove_laticinios(db_com_alimentos):
     assert "frango" in nomes          # o resto do catalogo segue disponivel
 
 
+def test_laticinio_que_nao_diz_leite_no_nome_tambem_sai(db_com_alimentos):
+    """"Bebida lactea" nao contem "leite" nem "queijo".
+
+    Encontrado em teste real contra a base da TACO, com a restricao de
+    lactose declarada: o cardapio veio com 250 g de bebida lactea. Aqui o
+    nome DIZ o que o alimento e - faltava a palavra no dicionario, e nao
+    havia como o filtro descobrir sozinho.
+    """
+    catalogo = banco.buscar_catalogo(["lactose"], caminho=db_com_alimentos)
+    assert all("lactea" not in a["nome_normalizado"] for a in catalogo)
+
+
 def test_restricao_por_nome_livre(db_com_alimentos):
     """Restricao fora do dicionario e usada literalmente."""
     catalogo = banco.buscar_catalogo(["banana"], caminho=db_com_alimentos)
     assert all("banana" not in a["nome"].lower() for a in catalogo)
-    # 11 na base, menos a banana e menos o prato preparado (ver o bloco
+    # 12 na base, menos a banana e menos o prato preparado (ver o bloco
     # "ALIMENTOS PREPARADOS" mais abaixo).
-    assert len(catalogo) == 9
+    assert len(catalogo) == 10
 
 
 def test_restricao_ignora_acentos_e_maiusculas(db_com_alimentos):
@@ -253,7 +268,7 @@ def test_restricao_vazia_nao_conta_como_restricao(db_com_alimentos):
     """Lista vazia e string em branco nao sao declaracao de restricao."""
     for nada in ([], None, [""], ["   "]):
         catalogo = banco.buscar_catalogo(nada, caminho=db_com_alimentos)
-        assert len(catalogo) == 11, nada
+        assert len(catalogo) == 12, nada
 
 
 def test_prato_preparado_aparece_na_lista_de_excluidos(db_com_alimentos):

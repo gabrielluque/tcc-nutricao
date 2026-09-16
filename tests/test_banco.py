@@ -285,6 +285,179 @@ def test_filtro_por_grupo(db_com_alimentos):
 
 
 # ==========================================================================
+# CARDAPIOS GERADOS
+# ==========================================================================
+
+def cardapio_exemplo():
+    """Cardapio minimo, no formato que integracao_ia.gerar_cardapio devolve."""
+    item = {"codigo_taco": 1, "alimento": "Arroz, integral, cozido",
+            "grupo": "Cereais", "gramas": 150.0, "kcal": 186.0,
+            "proteina_g": 3.9, "gordura_g": 1.5, "carboidrato_g": 38.7,
+            "fibra_g": 4.1}
+    return {"refeicoes": [{"nome": "Almoço", "itens": [item],
+                           "totais": {"kcal": 186.0}}],
+            "totais": {"kcal": 186.0}, "comparacao": {},
+            "descartados": [{"codigo_taco": 9999, "motivo": "fora do catálogo"}],
+            "fator_de_ajuste": 1.08, "modelo": "gemini-2.5-flash"}
+
+
+def registro_para_cardapio(db):
+    uid = banco.criar_usuario("G", "g@t.com", "x", caminho=db)
+    return uid, banco.salvar_registro(uid, 80, 30, "moderado", "perder", 4,
+                                      plano_exemplo(), caminho=db)
+
+
+def test_cardapio_volta_igual_ao_que_foi_gravado(db):
+    """O cardapio e guardado para que a pessoa veja O MESMO plano quando
+    voltar na tela. Um plano que muda sozinho a cada visita nao e um plano."""
+    _, rid = registro_para_cardapio(db)
+    banco.salvar_cardapio(rid, cardapio_exemplo(), caminho=db)
+
+    lido = banco.buscar_cardapio(rid, caminho=db)
+    assert lido["refeicoes"][0]["itens"][0]["alimento"] == "Arroz, integral, cozido"
+    assert lido["refeicoes"][0]["itens"][0]["kcal"] == pytest.approx(186.0)
+    assert lido["modelo"] == "gemini-2.5-flash"
+
+
+def test_registro_sem_cardapio_devolve_none(db):
+    _, rid = registro_para_cardapio(db)
+    assert banco.buscar_cardapio(rid, caminho=db) is None
+
+
+def test_numeros_do_capitulo_4_ficam_em_coluna_e_nao_dentro_do_json(db):
+    """Descartes e fator de ajuste viram estatistica. Numero que vai ser
+    contado em SQL nao pode estar enterrado num campo de texto."""
+    _, rid = registro_para_cardapio(db)
+    banco.salvar_cardapio(rid, cardapio_exemplo(), caminho=db)
+
+    with banco.conectar(db) as conexao:
+        linha = conexao.execute(
+            "SELECT descartados, fator_de_ajuste FROM cardapios").fetchone()
+    assert linha["descartados"] == 1
+    assert linha["fator_de_ajuste"] == pytest.approx(1.08)
+
+
+def test_gerar_de_novo_substitui_em_vez_de_acumular(db):
+    _, rid = registro_para_cardapio(db)
+    banco.salvar_cardapio(rid, cardapio_exemplo(), caminho=db)
+    banco.salvar_cardapio(rid, cardapio_exemplo(), caminho=db)
+
+    with banco.conectar(db) as conexao:
+        assert conexao.execute(
+            "SELECT COUNT(*) AS n FROM cardapios").fetchone()["n"] == 1
+
+
+def test_contador_de_trocas_sobrevive_a_um_cardapio_novo(db):
+    """O numero de substituicoes mede o quanto as pessoas usam a liberdade de
+    ajuste - a hipotese do trabalho. Zerar o contador ao gerar outro cardapio
+    apagaria justamente o dado que interessa."""
+    _, rid = registro_para_cardapio(db)
+    banco.salvar_cardapio(rid, cardapio_exemplo(), caminho=db)
+    banco.registrar_substituicao(rid, cardapio_exemplo(), caminho=db)
+    banco.salvar_cardapio(rid, cardapio_exemplo(), caminho=db)
+
+    assert banco.buscar_cardapio(rid, caminho=db)["substituicoes"] == 1
+
+
+def test_excluir_conta_apaga_o_cardapio_junto(db):
+    """Direito de eliminacao: o cardapio e dado alimentar do titular."""
+    uid, rid = registro_para_cardapio(db)
+    banco.salvar_cardapio(rid, cardapio_exemplo(), caminho=db)
+
+    banco.excluir_conta(uid, caminho=db)
+    assert banco.buscar_cardapio(rid, caminho=db) is None
+
+
+def test_resumo_de_cardapios_agrega_para_o_capitulo_4(db):
+    uid, rid = registro_para_cardapio(db)
+    banco.salvar_cardapio(rid, cardapio_exemplo(), caminho=db)
+    banco.registrar_substituicao(rid, cardapio_exemplo(), caminho=db)
+
+    resumo = banco.resumo_de_cardapios(caminho=db)
+    assert resumo["gerados"] == 1
+    assert resumo["itens_descartados"] == 1
+    assert resumo["substituicoes"] == 1
+    assert resumo["fator_medio"] == pytest.approx(1.08)
+
+
+def test_resumo_em_banco_vazio_nao_quebra(db):
+    assert banco.resumo_de_cardapios(caminho=db)["gerados"] == 0
+
+
+# ==========================================================================
+# MIGRACAO DO ESQUEMA
+#
+# O sistema ja esta no ar, com contas de voluntarios dentro. Toda coluna
+# nova precisa chegar ao banco existente sem apagar nada - e CREATE TABLE IF
+# NOT EXISTS, sozinho, nao faz isso.
+# ==========================================================================
+
+def banco_antigo():
+    """Um banco no esquema anterior: registros sem as colunas novas."""
+    caminho = tempfile.mktemp(suffix=".db")
+    esquema = banco.ESQUEMA
+    for coluna, _ in banco.COLUNAS_ACRESCENTADAS["registros"]:
+        esquema = "\n".join(l for l in esquema.splitlines()
+                             if not l.strip().startswith(coluna))
+    with banco.conectar(caminho) as conexao:
+        conexao.executescript(esquema)
+    return caminho
+
+
+def test_o_banco_antigo_realmente_nao_tem_as_colunas_novas():
+    """Guarda o proprio teste: se o cenario deixar de ser o antigo, os testes
+    de migracao abaixo passariam sem provar nada."""
+    caminho = banco_antigo()
+    with banco.conectar(caminho) as conexao:
+        colunas = {c["name"] for c in conexao.execute("PRAGMA table_info(registros)")}
+    assert "restricoes" not in colunas
+    os.remove(caminho)
+
+
+def test_migracao_acrescenta_as_colunas_sem_perder_dados():
+    caminho = banco_antigo()
+    uid = banco.criar_usuario("Voluntário", "v@t.com", "x", caminho=caminho)
+
+    # Grava um registro pelo caminho antigo, sem as colunas novas.
+    with banco.conectar(caminho) as conexao:
+        conexao.execute(
+            """INSERT INTO registros (usuario_id, criado_em, peso, bf,
+                   nivel_atividade, objetivo, refeicoes_por_dia,
+                   ajuste_calorico_padrao, ajuste_calorico_usado,
+                   fator_proteina_padrao, fator_proteina_usado,
+                   fator_gordura_padrao, fator_gordura_usado,
+                   fator_agua_padrao, fator_agua_usado,
+                   fator_fibras_padrao, fator_fibras_usado,
+                   tmb, equacao_utilizada, get, meta_calorica, proteina_g,
+                   gordura_g, carboidrato_g, agua_ml, fibras_g)
+               VALUES (?,?,?,?,?,?,?, ?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?,?,?,?,?)""",
+            (uid, "2026-09-01T10:00:00", 82.0, 25.0, "moderado", "perder", 4,
+             -0.2, -0.2, 2.2, 2.2, 0.8, 0.8, 35, 35, 14, 14,
+             1700.0, "Katch-McArdle", 2400.0, 1920.0, 176.0, 66.0, 200.0,
+             2870.0, 27.0))
+
+    banco.criar_esquema(caminho)      # migra
+    banco.criar_esquema(caminho)      # e e idempotente
+
+    with banco.conectar(caminho) as conexao:
+        linha = conexao.execute("SELECT * FROM registros").fetchone()
+    assert linha["peso"] == 82.0            # o dado antigo continua la
+    assert linha["restricoes"] == ""        # a coluna nova nasce com o padrao
+    assert linha["preferencias"] == ""
+    os.remove(caminho)
+
+
+def test_migracao_cria_a_tabela_de_cardapios_no_banco_antigo():
+    caminho = banco_antigo()
+    banco.criar_esquema(caminho)
+    with banco.conectar(caminho) as conexao:
+        tabelas = {l["name"] for l in conexao.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'")}
+    assert "cardapios" in tabelas
+    os.remove(caminho)
+
+
+# ==========================================================================
 # EVENTOS ANONIMOS
 # ==========================================================================
 

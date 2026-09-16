@@ -395,8 +395,12 @@ def excluir_conta(usuario_id, caminho=None):
 # interface mostra ao usuario quais alimentos foram excluidos, permitindo
 # conferencia.
 RESTRICOES_CONHECIDAS = {
-    "lactose": ["leite", "queijo", "iogurte", "requeijao", "manteiga",
-                "creme de leite", "doce de leite", "coalhada", "ricota"],
+    # "lacte" cobre "lactea" e "lacteo" - a TACO tem "Bebida lactea" e
+    # "Farinha lactea", que a lista original deixava passar. Encontrado em
+    # teste real contra a base, nao no papel.
+    "lactose": ["leite", "lacte", "queijo", "iogurte", "requeijao",
+                "manteiga", "creme de leite", "doce de leite", "coalhada",
+                "ricota"],
     "gluten": ["trigo", "pao", "macarrao", "biscoito", "bolo", "cevada",
                "centeio", "farinha de rosca", "torrada"],
     "ovo": ["ovo", "omelete", "maionese"],
@@ -405,8 +409,8 @@ RESTRICOES_CONHECIDAS = {
     "vegetariano": ["boi", "bovina", "carne", "porco", "suina", "frango",
                     "peixe", "camarao", "linguica", "presunto"],
     "vegano": ["boi", "bovina", "carne", "porco", "suina", "frango", "peixe",
-               "camarao", "linguica", "presunto", "leite", "queijo", "ovo",
-               "iogurte", "manteiga", "mel"],
+               "camarao", "linguica", "presunto", "leite", "lacte", "queijo",
+               "ovo", "iogurte", "manteiga", "mel"],
 }
 
 

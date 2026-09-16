@@ -38,6 +38,8 @@ from flask import (Flask, flash, redirect, render_template, request, session,
 
 import banco
 import calculadora
+import integracao_ia
+import substituicao
 
 load_dotenv()
 
@@ -97,7 +99,19 @@ app.config.update(
     MAX_CONTENT_LENGTH=1024 * 1024,
 )
 
+# Quantos cardapios uma pessoa pode gerar por dia.
+#
+# O limite protege a cota gratuita da API do Gemini, que e compartilhada por
+# todos os voluntarios: sem ele, uma unica pessoa clicando em "gerar" vinte
+# vezes derruba o teste para os outros vinte e quatro.
+#
+# Note onde ele NAO esta: o calculo das metas nao tem limite nenhum, porque
+# nao custa nada - e aritmetica local. So a chamada a IA e contada.
 LIMITE_DIETAS_POR_DIA = int(os.environ.get("LIMITE_DIETAS_POR_DIA", 10))
+
+# Quantas alternativas mostrar ao trocar um alimento. Cinco cabem na tela sem
+# rolagem e ja cobrem as opcoes plausiveis; mais do que isso vira catalogo.
+LIMITE_SUBSTITUTOS = 5
 
 # Garante que as tabelas existam antes de a primeira requisicao chegar.
 #
@@ -335,18 +349,16 @@ def calcular():
         nivel_atividade=nivel, objetivo=objetivo, bf=bf, **ajustes)
 
     # --- Gravacao --------------------------------------------------------
+    #
+    # O calculo em si nao tem limite de uso: e aritmetica local, nao custa
+    # cota nenhuma. O limite diario vive na rota que chama a IA.
     if etapa == "gerar" and not erros:
-        usados_hoje = banco.contar_eventos_hoje(session["usuario_id"], "dieta_gerada")
-        if usados_hoje >= LIMITE_DIETAS_POR_DIA:
-            erros.append(
-                f"Você atingiu o limite de {LIMITE_DIETAS_POR_DIA} dietas por dia. "
-                "Tente novamente amanhã.")
-        else:
-            registro_id = banco.salvar_registro(
-                session["usuario_id"], peso, bf, nivel, objetivo,
-                int(refeicoes), plano)
-            banco.registrar_evento(session["usuario_id"], "calculo", objetivo)
-            return redirect(url_for("resultado", registro_id=registro_id))
+        registro_id = banco.salvar_registro(
+            session["usuario_id"], peso, bf, nivel, objetivo,
+            int(refeicoes), plano,
+            restricoes=", ".join(restricoes), preferencias=preferencias)
+        banco.registrar_evento(session["usuario_id"], "calculo", objetivo)
+        return redirect(url_for("resultado", registro_id=registro_id))
 
     return render_template("index.html", perfil=perfil,
                            atividades=calculadora.FATORES_ATIVIDADE,
@@ -369,13 +381,198 @@ def resultado(registro_id):
     if registro is None:
         return redirect(url_for("calcular"))
 
-    alimentos_liberados = banco.contar_alimentos()
+    cardapio = banco.buscar_cardapio(registro_id)
+
+    # "trocar=2-0" quer dizer: mostre as alternativas para o primeiro item da
+    # terceira refeicao. Vem pela URL, e nao por JavaScript, para que a lista
+    # de trocas seja montada pelo servidor - e para que o sistema continue
+    # funcionando com o JavaScript desligado, como o resto das telas.
+    troca, alternativas, item_trocado = request.args.get("trocar"), [], None
+    if cardapio and troca:
+        item_trocado, alternativas = _alternativas_para(registro, cardapio, troca)
+
     return render_template("resultado.html", registro=registro,
-                           alimentos_liberados=alimentos_liberados)
+                           cardapio=cardapio,
+                           alimentos_liberados=_catalogo_do(registro, contar=True),
+                           troca=troca, item_trocado=item_trocado,
+                           alternativas=alternativas)
 
 
 # ==========================================================================
-# 4. HISTORICO E CONTA
+# 4. CARDAPIO
+#
+# Aqui esta a unica parte do sistema que fala com a IA, e ela e deliberadamente
+# uma rota separada do calculo. Tres motivos:
+#
+#   1. O calculo das metas e instantaneo e nunca falha; a chamada a IA demora
+#      alguns segundos e pode falhar (rede, cota, modelo fora do ar). Separar
+#      significa que uma coisa quebrada nao leva a outra junto: quem nao
+#      conseguiu o cardapio ainda ve suas metas na tela.
+#   2. O cardapio fica GRAVADO. Voltar na pagina mostra o mesmo cardapio, e
+#      nao um novo a cada F5 - um plano alimentar que muda sozinho nao e um
+#      plano, e cada F5 gastaria a cota compartilhada.
+#   3. O limite diario fica em um lugar so, na porta da API.
+# ==========================================================================
+
+def _restricoes_do(registro):
+    """As restricoes do registro, como lista de termos."""
+    return [t.strip() for t in (registro["restricoes"] or "").split(",")
+            if t.strip()]
+
+
+def _catalogo_do(registro, contar=False):
+    """
+    Os alimentos liberados para este registro.
+
+    FRONTEIRA DE SEGURANCA: tudo que a IA ve e tudo que a substituicao oferece
+    sai daqui. Uma unica funcao, chamada por todas as rotas, para que nao
+    exista caminho no sistema que monte a lista de outro jeito.
+    """
+    catalogo = banco.buscar_catalogo(restricoes=_restricoes_do(registro))
+    return len(catalogo) if contar else catalogo
+
+
+def _alternativas_para(registro, cardapio, troca):
+    """
+    Opcoes de troca para um item, no formato "refeicao-item".
+
+    Devolve (item_original, lista_de_alternativas). Qualquer indice invalido
+    devolve lista vazia em vez de erro: o parametro vem da URL, e a URL e do
+    usuario.
+    """
+    try:
+        indice_refeicao, indice_item = (int(n) for n in troca.split("-", 1))
+    except (ValueError, AttributeError):
+        return None, []
+
+    item = _item_do_cardapio(cardapio, indice_refeicao, indice_item)
+    if item is None:
+        return None, []
+
+    catalogo = _catalogo_do(registro)
+    base = next((a for a in catalogo
+                 if a["codigo_taco"] == item.get("codigo_taco")), None)
+    if base is None:
+        return item, []
+
+    # O motor recebe o alimento POR 100 g (a linha da TACO) e a quantidade da
+    # porcao. Passar o item do cardapio direto daria numeros errados: nele os
+    # valores ja estao multiplicados pela porcao.
+    alternativas = substituicao.substitutos(
+        base, item["gramas"], catalogo,
+        limite=LIMITE_SUBSTITUTOS, mesmo_grupo=False)
+
+    for alternativa in alternativas:
+        alternativa["explicacao"] = substituicao.explicar(item, alternativa)
+    return item, alternativas
+
+
+def _item_do_cardapio(cardapio, indice_refeicao, indice_item):
+    """Um item pelo par de indices, ou None se qualquer um estiver fora."""
+    refeicoes = cardapio.get("refeicoes", [])
+    if not (0 <= indice_refeicao < len(refeicoes)):
+        return None
+    itens = refeicoes[indice_refeicao].get("itens", [])
+    if not (0 <= indice_item < len(itens)):
+        return None
+    return itens[indice_item]
+
+
+@app.route("/cardapio/<int:registro_id>", methods=["POST"])
+@exige_login
+def gerar_cardapio(registro_id):
+    """Monta o cardapio do dia com a IA e grava o resultado."""
+    registro = banco.buscar_registro(registro_id, usuario_id=session["usuario_id"])
+    if registro is None:
+        return redirect(url_for("calcular"))
+
+    usados_hoje = banco.contar_eventos_hoje(session["usuario_id"], "dieta_gerada")
+    if usados_hoje >= LIMITE_DIETAS_POR_DIA:
+        flash(f"Você já gerou {LIMITE_DIETAS_POR_DIA} cardápios hoje. "
+              "O limite existe para que a cota da ferramenta dure para todos "
+              "os participantes. Tente de novo amanhã.", "erro")
+        return redirect(url_for("resultado", registro_id=registro_id))
+
+    catalogo = _catalogo_do(registro)
+    if not catalogo:
+        flash("Suas restrições não deixaram nenhum alimento disponível. "
+              "Refaça o cálculo declarando menos restrições.", "erro")
+        return redirect(url_for("resultado", registro_id=registro_id))
+
+    try:
+        cardapio = integracao_ia.gerar_cardapio(
+            registro, int(registro["refeicoes_por_dia"]), catalogo,
+            preferencias=registro["preferencias"] or "")
+    except Exception:
+        # A captura e ampla de proposito: rede, cota, formato de resposta e
+        # indisponibilidade do modelo chegam aqui como excecoes diferentes, e
+        # a resposta ao usuario e a mesma em todos os casos. O erro vai
+        # inteiro para o log do servidor - engolir em silencio seria o
+        # problema; engolir registrando, nao.
+        app.logger.exception("falha ao gerar cardápio do registro %s", registro_id)
+        flash("Não consegui montar seu cardápio agora. Suas metas continuam "
+              "salvas — tente gerar de novo em alguns instantes.", "erro")
+        return redirect(url_for("resultado", registro_id=registro_id))
+
+    banco.salvar_cardapio(registro_id, cardapio)
+    banco.registrar_evento(session["usuario_id"], "dieta_gerada")
+    return redirect(url_for("resultado", registro_id=registro_id))
+
+
+@app.route("/substituir/<int:registro_id>", methods=["POST"])
+@exige_login
+def substituir(registro_id):
+    """
+    Troca um item do cardapio por um equivalente e regrava o cardapio.
+
+    O codigo escolhido e conferido contra a lista que o motor acabou de
+    oferecer, e nao aceito porque veio no formulario. Sem essa conferencia,
+    bastaria alterar o valor enviado para reintroduzir no prato um alimento
+    que a restricao havia excluido - a tela seria uma porta de entrada para
+    burlar a propria barreira de seguranca do sistema.
+    """
+    registro = banco.buscar_registro(registro_id, usuario_id=session["usuario_id"])
+    cardapio = banco.buscar_cardapio(registro_id)
+    if registro is None or cardapio is None:
+        return redirect(url_for("calcular"))
+
+    troca = request.form.get("trocar", "")
+    item, alternativas = _alternativas_para(registro, cardapio, troca)
+
+    escolhido = None
+    if item is not None:
+        codigo = request.form.get("codigo", "")
+        escolhido = next((a for a in alternativas
+                          if str(a["codigo_taco"]) == codigo), None)
+
+    if escolhido is None:
+        flash("Essa troca não está mais disponível.", "erro")
+        return redirect(url_for("resultado", registro_id=registro_id))
+
+    indice_refeicao, indice_item = (int(n) for n in troca.split("-", 1))
+    refeicao = cardapio["refeicoes"][indice_refeicao]
+    refeicao["itens"][indice_item] = {
+        chave: valor for chave, valor in escolhido.items()
+        if chave not in ("distancia", "explicacao")
+    }
+
+    # Os totais sao refeitos, nunca corrigidos por diferenca: somar de novo a
+    # partir dos itens e o que garante que a tela nunca mostre um total que
+    # nao corresponde ao que esta listado abaixo dele.
+    refeicao["totais"] = integracao_ia.somar(refeicao["itens"])
+    cardapio["totais"] = integracao_ia.somar(
+        [i for r in cardapio["refeicoes"] for i in r["itens"]])
+    cardapio["comparacao"] = integracao_ia.comparar_com_as_metas(
+        cardapio["totais"], registro)
+
+    banco.registrar_substituicao(registro_id, cardapio)
+    banco.registrar_evento(session["usuario_id"], "ajuste_pedido", "substituicao")
+    flash(f"Trocado por {escolhido['alimento']}.", "sucesso")
+    return redirect(url_for("resultado", registro_id=registro_id))
+
+
+# ==========================================================================
+# 5. HISTORICO E CONTA
 # ==========================================================================
 
 @app.route("/historico")

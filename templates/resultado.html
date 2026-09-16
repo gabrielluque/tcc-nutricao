@@ -67,25 +67,159 @@
       </p>
     </div>
 
-    {# O cardapio ainda nao existe: a integracao com a IA e a importacao da
-       TACO sao as proximas etapas. Este aviso e provisorio e sera
-       substituido pelo cardapio propriamente dito. #}
-    <div class="cartao">
-      <h2 class="h6 mb-2">Cardápio</h2>
-      <p class="texto-suave small mb-3">
-        A montagem do cardápio depende da base TACO, que está sendo
-        importada. Enquanto isso, suas metas acima já estão calculadas e
-        salvas no histórico.
-      </p>
-      <p class="mb-0">
-        <span class="badge text-bg-light">
-          {{ alimentos_liberados }} alimento{{ '' if alimentos_liberados == 1 else 's' }}
-          na base
-        </span>
-      </p>
-    </div>
+    {# ====================================================================
+       CARDAPIO
 
-    <div class="d-flex gap-2 mt-4">
+       Duas situacoes: ainda nao existe (convite para gerar) ou ja existe
+       (as refeicoes, os totais e o botao de troca em cada item).
+       ==================================================================== #}
+
+    {% if not cardapio %}
+
+      <div class="cartao mb-4">
+        <h2 class="h6 mb-2">Cardápio do dia</h2>
+        <p class="texto-suave small mb-3">
+          {{ alimentos_liberados }} alimento{{ '' if alimentos_liberados == 1 else 's' }}
+          da Tabela TACO {{ 'está' if alimentos_liberados == 1 else 'estão' }}
+          disponíve{{ 'l' if alimentos_liberados == 1 else 'is' }} para você
+          {%- if registro.restricoes %}, depois das restrições que você declarou
+          ({{ registro.restricoes }}){% endif %}.
+          A montagem combina os alimentos; todas as quantidades e calorias são
+          calculadas pelo sistema a partir da tabela.
+        </p>
+        {% if alimentos_liberados > 0 %}
+          <form method="post" action="{{ url_for('gerar_cardapio', registro_id=registro.id) }}">
+            <button class="btn btn-primary" type="submit">Montar meu cardápio</button>
+          </form>
+        {% else %}
+          <p class="mb-0 small">
+            Suas restrições não deixaram nenhum alimento disponível.
+            <a href="{{ url_for('calcular') }}">Refaça o cálculo</a> declarando menos restrições.
+          </p>
+        {% endif %}
+      </div>
+
+    {% else %}
+
+      <div class="d-flex align-items-baseline justify-content-between mb-2">
+        <h2 class="h6 mb-0">Cardápio do dia</h2>
+        <span class="texto-suave pequeno">
+          {{ cardapio.totais.kcal|round|int }} kcal no total
+        </span>
+      </div>
+
+      {% for refeicao in cardapio.refeicoes %}
+        {% set indice_refeicao = loop.index0 %}
+        <div class="refeicao">
+          <div class="refeicao-topo">
+            <h3 class="refeicao-nome">{{ refeicao.nome }}</h3>
+            <span class="refeicao-kcal">{{ refeicao.totais.kcal|round|int }} kcal</span>
+          </div>
+
+          {% for item in refeicao.itens %}
+            {% set id_troca = indice_refeicao ~ '-' ~ loop.index0 %}
+
+            <div class="item-linha {{ 'em-troca' if troca == id_troca }}">
+              <span class="item-gramas">{{ item.gramas|round|int }} g</span>
+              <span class="item-nome">{{ item.alimento }}</span>
+              <span class="item-fim">
+                <span class="item-kcal">{{ item.kcal|round|int }} kcal</span>
+                {% if troca == id_troca %}
+                  <a class="item-trocar"
+                     href="{{ url_for('resultado', registro_id=registro.id) }}">fechar</a>
+                {% else %}
+                  <a class="item-trocar"
+                     href="{{ url_for('resultado', registro_id=registro.id, trocar=id_troca) }}">trocar</a>
+                {% endif %}
+              </span>
+            </div>
+
+            {% if troca == id_troca %}
+              <div class="painel-troca">
+                {% if alternativas %}
+                  <p class="texto-suave pequeno mb-2">
+                    Cada opção entrega a mesma energia da porção original.
+                    As quantidades já vêm recalculadas.
+                  </p>
+                  {% for alternativa in alternativas %}
+                    <form method="post"
+                          action="{{ url_for('substituir', registro_id=registro.id) }}">
+                      <input type="hidden" name="trocar" value="{{ id_troca }}">
+                      <input type="hidden" name="codigo" value="{{ alternativa.codigo_taco }}">
+                      <button class="opcao-troca" type="submit">
+                        <span><strong>{{ alternativa.gramas|round|int }} g</strong>
+                              de {{ alternativa.alimento }}</span>
+                      </button>
+                    </form>
+                    <p class="texto-suave pequeno mb-3" style="margin-top:-.25rem">
+                      {{ alternativa.explicacao }}
+                    </p>
+                  {% endfor %}
+                {% else %}
+                  <p class="texto-suave small mb-0">
+                    Não encontrei alternativa com porção realista para este
+                    item dentro dos alimentos liberados para você.
+                  </p>
+                {% endif %}
+              </div>
+            {% endif %}
+          {% endfor %}
+        </div>
+      {% endfor %}
+
+      {# ---- Quanto o cardapio se aproximou das metas ---------------------
+         Aparece porque o usuario tem direito de ver a diferenca, em vez de
+         receber um resultado que se apresenta como exato. O sistema fecha a
+         energia; proteina, gordura e carboidrato ficam onde a combinacao de
+         alimentos os deixou.
+         ------------------------------------------------------------------ #}
+      <div class="cartao mb-4">
+        <h3 class="h6 mb-3">O que o cardápio entrega</h3>
+
+        {% for rotulo, chave in [
+            ('Energia', 'kcal'), ('Proteína', 'proteina_g'),
+            ('Gordura', 'gordura_g'), ('Carboidrato', 'carboidrato_g'),
+            ('Fibras', 'fibra_g')] %}
+          {% set linha = cardapio.comparacao[chave] %}
+          {% set proporcao = [(linha.obtido / linha.alvo * 100) if linha.alvo else 0, 100]|min %}
+          <div class="meta-linha">
+            <span class="meta-nome">{{ rotulo }}</span>
+            <span class="meta-barra">
+              <span class="meta-preenchida {{ 'longe' if linha.percentual|abs > 15 }}"
+                    style="width: {{ proporcao|round(1) }}%"></span>
+            </span>
+            <span class="meta-numero">
+              {{ linha.obtido|round|int }} / {{ linha.alvo|round|int }}{{ '' if chave == 'kcal' else ' g' }}
+            </span>
+          </div>
+        {% endfor %}
+
+        <p class="texto-suave pequeno mt-3 mb-0">
+          As barras em laranja ficaram mais de 15% longe da meta. O sistema
+          fecha a conta da energia; proteína, gordura e carboidrato ficam onde
+          a combinação de alimentos os deixou — por isso a diferença aparece
+          aqui, em vez de o resultado se apresentar como exato.
+          Todos os valores vêm da Tabela TACO, recalculados a partir das
+          quantidades acima.
+          {%- if cardapio.descartados %}
+            {{ cardapio.descartados|length }} sugest{{ 'ão' if cardapio.descartados|length == 1 else 'ões' }}
+            {{ 'foi' if cardapio.descartados|length == 1 else 'foram' }} descartada{{ '' if cardapio.descartados|length == 1 else 's' }}
+            por não corresponder{{ '' if cardapio.descartados|length == 1 else 'em' }} aos alimentos liberados.
+          {%- endif %}
+        </p>
+      </div>
+
+      <form method="post" action="{{ url_for('gerar_cardapio', registro_id=registro.id) }}"
+            class="mb-2">
+        <button class="btn btn-recalcular" type="submit">Montar outro cardápio</button>
+      </form>
+      <p class="texto-suave pequeno">
+        Gerar de novo substitui o cardápio atual, com as mesmas metas.
+      </p>
+
+    {% endif %}
+
+    <div class="acoes-rodape">
       <a class="btn btn-outline-secondary" href="{{ url_for('calcular') }}">
         Novo cálculo
       </a>

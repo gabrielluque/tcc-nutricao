@@ -516,6 +516,29 @@ textarea.form-control { font-weight: 600; line-height: 1.5; }
   color: #1d5c44;
 }
 
+.btn-outline-secondary {
+  display: inline-block;
+  color: var(--tinta-media);
+  background: var(--superficie);
+  border: 2px solid var(--borda);
+  border-radius: 16px;
+  padding: .7rem 1.1rem;
+  font-weight: 800;
+  font-size: .9rem;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.btn-outline-secondary:hover {
+  border-color: var(--verde-borda);
+  color: var(--verde-texto);
+}
+
+/* Os dois botoes do rodape ficam lado a lado mesmo sem o Bootstrap: esta
+   tela nao carrega a rede de seguranca do .coluna, e a pagina precisa
+   continuar legivel se o CDN falhar. */
+.acoes-rodape { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: 1.4rem; }
+
 .btn-outline-primary {
   color: var(--tinta-media);
   background: var(--superficie);
@@ -795,4 +818,165 @@ textarea.form-control { font-weight: 600; line-height: 1.5; }
   .anel-meta { width: 186px; height: 186px; }
   .anel-meta .valor { font-size: 2.4rem; }
   .macro-caixa .numero-valor { font-size: 1.05rem; }
+}
+
+/* ---------- Cardapio ---------------------------------------------------------
+   A refeicao e a unidade visual, nao o alimento: a pessoa come "o almoco",
+   nao "150 g de arroz". Por isso cada refeicao e um bloco fechado, com o
+   proprio total, e os itens sao linhas dentro dele.
+
+   O botao de troca fica em cada linha, e nao escondido atras de um menu. Ele
+   e a liberdade que este trabalho quer medir - se estiver dificil de achar,
+   ninguem usa, e a hipotese fica sem dado.
+   -------------------------------------------------------------------------- */
+
+.refeicao {
+  background: var(--superficie);
+  border: 1.5px solid var(--borda);
+  border-radius: 20px;
+  box-shadow: 0 3px 0 var(--sombra);
+  padding: 1.1rem 1.15rem;
+  margin-bottom: 1rem;
+}
+
+.refeicao-topo {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .75rem;
+  margin-bottom: .5rem;
+}
+
+.refeicao-nome {
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--tinta);
+  margin: 0;
+}
+
+.refeicao-kcal {
+  font-size: .8rem;
+  font-weight: 800;
+  color: var(--verde-texto);
+  background: var(--verde-claro);
+  border: 1.5px solid var(--verde-borda);
+  border-radius: 999px;
+  padding: .15rem .6rem;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.item-linha {
+  display: flex;
+  align-items: baseline;
+  gap: .6rem;
+  padding: .55rem 0;
+  border-top: 1px solid var(--borda);
+}
+
+.item-gramas {
+  flex: 0 0 auto;
+  min-width: 3.6rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--tinta);
+}
+
+.item-nome  { flex: 1 1 auto; color: var(--tinta-media); font-weight: 600; }
+.item-kcal  {
+  flex: 0 0 auto;
+  font-size: .8rem;
+  color: var(--tinta-suave);
+  font-variant-numeric: tabular-nums;
+}
+
+.item-fim {
+  display: flex;
+  align-items: baseline;
+  gap: .6rem;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.item-trocar {
+  flex: 0 0 auto;
+  font-size: .78rem;
+  font-weight: 800;
+  color: var(--verde-texto);
+  text-decoration: none;
+  border-bottom: 2px solid var(--verde-borda);
+  padding-bottom: 1px;
+}
+
+.item-trocar:hover { color: var(--verde-esc); border-bottom-color: var(--verde); }
+.item-linha.em-troca { background: var(--verde-claro); border-radius: 12px; padding: .55rem .6rem; }
+
+/* ---------- Painel de troca ------------------------------------------------ */
+
+.painel-troca {
+  background: var(--papel);
+  border: 1.5px solid var(--verde-borda);
+  border-radius: 16px;
+  padding: .9rem 1rem;
+  margin: .25rem 0 .5rem;
+}
+
+.opcao-troca {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  width: 100%;
+  text-align: left;
+  background: var(--superficie);
+  border: 1.5px solid var(--borda);
+  border-radius: 14px;
+  padding: .6rem .75rem;
+  margin-bottom: .45rem;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: .85rem;
+  color: var(--tinta-media);
+}
+
+.opcao-troca:hover { border-color: var(--verde); background: var(--verde-claro); }
+.opcao-troca strong { color: var(--tinta); }
+
+/* ---------- Metas atingidas ------------------------------------------------- */
+
+.meta-linha {
+  display: flex;
+  align-items: center;
+  gap: .7rem;
+  margin-bottom: .5rem;
+  font-size: .82rem;
+}
+
+.meta-nome   { flex: 0 0 5.2rem; color: var(--tinta-suave); font-weight: 700; }
+.meta-numero { flex: 0 0 auto; font-variant-numeric: tabular-nums; font-weight: 700; }
+
+.meta-barra {
+  flex: 1 1 auto;
+  height: 8px;
+  background: var(--sombra);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.meta-preenchida {
+  display: block;            /* sem isto o span fica inline e a altura e ignorada */
+  height: 100%;
+  border-radius: 999px;
+  background: var(--verde);
+}
+.meta-preenchida.longe { background: var(--proteina); }
+
+@media (max-width: 575.98px) {
+  /* O nome do alimento tem largura propria e o fim da linha (calorias e o
+     botao de troca) desce inteiro para a segunda linha, alinhado a direita.
+     Antes cada peca quebrava por conta, e sobrava um "120 g" orfao. */
+  .item-linha  { flex-wrap: wrap; row-gap: .15rem; }
+  .item-nome   { flex: 1 1 calc(100% - 4.4rem); }
+  .item-fim    { flex: 1 1 100%; justify-content: flex-end; }
+  .meta-nome   { flex-basis: 4.2rem; }
+  .meta-numero { font-size: .78rem; }
 }
